@@ -57,6 +57,14 @@ interpolate_plan plan_interpolate_3d(int n0, int n1, int n2, fftw_complex *in, f
   return plan;
 }
 
+void interpolate_destroy_plan(interpolate_plan plan)
+{
+  for(int dim = 0; dim < 3; ++dim)
+    fftw_free(plan->rotations[dim]);
+
+  free(plan);
+}
+
 
 static void build_rotation(int size, fftw_complex *out)
 {
@@ -204,7 +212,7 @@ int main(int argc, char **argv)
         in[offset][0] = test_function(x_pos, y_pos, z_pos);
         in[offset][1] = 0.0;
 
-        printf("in[%d][%d][%d] = %f\n", x, y, z, in[offset][0]);
+        //printf("in[%d][%d][%d] = %f\n", x, y, z, in[offset][0]);
       }
     }
   }
@@ -225,8 +233,8 @@ int main(int argc, char **argv)
         const double z_pos = (z * pi)/width;
 
         const double expected = test_function(x_pos, y_pos, z_pos);
-        printf("out(e)[%d][%d][%d] = %f\n", x, y, z, expected);
-        printf("out(a)[%d][%d][%d] = %f\n", x, y, z, out[offset][0]);
+        //printf("out(e)[%d][%d][%d] = %f\n", x, y, z, expected);
+        //printf("out(a)[%d][%d][%d] = %f\n", x, y, z, out[offset][0]);
 
         abs_val += abs(out[offset][0] - expected);
       }
@@ -235,6 +243,7 @@ int main(int argc, char **argv)
 
   printf("Delta: %f\n", abs_val);
 
+  interpolate_destroy_plan(plan);
 
   return EXIT_SUCCESS;
 }
