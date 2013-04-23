@@ -1,6 +1,6 @@
 interpolate: interpolate.h
 
-CFLAGS = -std=c99 -O2 -Wall
+CFLAGS = -std=c99 -O2 -Wall -pedantic
 LIBADD = -lfftw3
 
 interpolate: interpolate.o timer.o
