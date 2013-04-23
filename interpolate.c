@@ -62,6 +62,12 @@ void interpolate_destroy_plan(interpolate_plan plan)
   for(int dim = 0; dim < 3; ++dim)
     fftw_free(plan->rotations[dim]);
 
+  for(int dim = 0; dim < 3; ++dim)
+    fftw_destroy_plan(plan->dfts[dim]);
+
+  for(int dim = 0; dim < 3; ++dim)
+    fftw_destroy_plan(plan->idfts[dim]);
+
   free(plan);
 }
 
@@ -288,6 +294,8 @@ int main(int argc, char **argv)
   printf("Execution time: %f\n", time_point_delta(&begin_resample, &end_resample));
   printf("Delta: %f\n", abs_val);
 
+  fftw_free(in);
+  fftw_free(out);
   interpolate_destroy_plan(plan);
 
   return EXIT_SUCCESS;
