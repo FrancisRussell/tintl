@@ -16,6 +16,7 @@ static void expand_dim2(interpolate_plan plan, fftw_complex *in, fftw_complex *o
 static void build_rotation(int size, fftw_complex *out);
 static void gather_blocks(interpolate_plan plan, fftw_complex *blocks[8], fftw_complex *out);
 static void pointwise_multiply_complex(int size, fftw_complex *a, fftw_complex *b);
+static void interleave_complex(int size, fftw_complex *out, const fftw_complex *even, const fftw_complex *odd);
 
 interpolate_plan plan_interpolate_3d(int n0, int n1, int n2, fftw_complex *in, fftw_complex *out)
 {
@@ -87,6 +88,15 @@ static void build_rotation(int size, fftw_complex *out)
   }
 }
 
+static void interleave_complex(int size, fftw_complex *out, const fftw_complex *even, const fftw_complex *odd)
+{
+  for(int i = 0; i < size; ++i)
+  {
+    out[i*2] = even[i];
+    out[i*2 + 1] = odd[i];
+  }
+}
+
 static void pointwise_multiply_complex(int size, fftw_complex *a, fftw_complex *b)
 {
 #if __SSE2__
@@ -117,13 +127,11 @@ static void gather_blocks(interpolate_plan plan, fftw_complex *blocks[8], fftw_c
   {
     for(int i1=0; i1 < plan->dims[1] * 2; ++i1)
     {
-      for(int i0=0; i0 < plan->dims[0] * 2; ++i0)
-      {
-        fftw_complex *block = blocks[(i2 % 2) + (i1 % 2) * 2 + (i0 % 2) * 4];
-        const int in_offset = (i2/2) * plan->strides[2] + (i1/2) * plan->strides[1] + (i0 / 2);
-        const int out_offset = i2 * plan->strides[2] * 4 + i1 * plan->strides[1] * 2 + i0;
-        out[out_offset] = block[in_offset];
-      }
+      const int in_offset = (i2/2) * plan->strides[2] + (i1/2) * plan->strides[1];
+      const fftw_complex *even = &blocks[(i2 % 2) + (i1 % 2) * 2][in_offset];
+      const fftw_complex *odd = &blocks[(i2 % 2) + (i1 % 2) * 2 + 4][in_offset];
+      fftw_complex *row_out = &out[i2 * plan->strides[2] * 4 + i1 * plan->strides[1] * 2];
+      interleave_complex(plan->dims[0], row_out, even, odd);
     }
   }
 }
