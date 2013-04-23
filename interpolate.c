@@ -91,22 +91,34 @@ static void build_rotation(int size, fftw_complex *out)
 
 static void interleave_complex(int size, fftw_complex *out, const fftw_complex *even, const fftw_complex *odd)
 {
+#ifdef __SSE2__
+  // This does not result in any observable performance improvement
+  for(int i = 0; i < size; ++i)
+  {
+    __m128d even_vec = _mm_load_pd((const double*)(even + i));
+    __m128d odd_vec = _mm_load_pd((const double*)(odd + i));
+    _mm_store_pd((double*)(out + i*2), even_vec);
+    _mm_store_pd((double*)(out + i*2 + 1), odd_vec);
+  }
+#else
   for(int i = 0; i < size; ++i)
   {
     out[i*2] = even[i];
     out[i*2 + 1] = odd[i];
   }
+#endif
 }
 
 static void pointwise_multiply_complex(int size, fftw_complex *a, fftw_complex *b)
 {
-#if __SSE2__
+#ifdef __SSE2__
+  // This *does* result in an observable performance improvement
   const __m128d neg = _mm_setr_pd(-1.0, 1.0);
-  for(int i=0; i<size; ++i)
+  for(int i = 0; i<size; ++i)
   {
     __m128d a_vec, a_imag, a_real, b_vec, res;
-    a_vec = _mm_load_pd((double*)(a + i));
-    b_vec = _mm_load_pd((double*)(b + i));
+    a_vec = _mm_load_pd((const double*)(a + i));
+    b_vec = _mm_load_pd((const double*)(b + i));
     a_imag = _mm_shuffle_pd(a_vec, a_vec, 3);
     a_real = _mm_shuffle_pd(a_vec, a_vec, 0);
     res = _mm_mul_pd(b_vec, a_real);
