@@ -26,13 +26,13 @@ interpolate_plan plan_interpolate_3d(int n0, int n1, int n2, fftw_complex *in, f
   int flags = 0;
   interpolate_plan_s *const plan = malloc(sizeof(interpolate_plan_s));
 
-  plan->dims[0] = n0;
+  plan->dims[0] = n2;
   plan->dims[1] = n1;
-  plan->dims[2] = n2;
+  plan->dims[2] = n0;
 
   plan->strides[0] = 1;
-  plan->strides[1] = n0;
-  plan->strides[2] = n0 * n1;
+  plan->strides[1] = n2;
+  plan->strides[2] = n2 * n1;
 
   for(int dim = 0; dim < 3; ++dim)
   {
@@ -234,31 +234,33 @@ static double test_function(double x, double y, double z)
 
 int main(int argc, char **argv)
 {
-  const int width = 100;
+  int x_width, y_width, z_width;
+  x_width = y_width = 65;
+  z_width = 75;
   time_point_t begin_resample, end_resample, begin_plan, end_plan;
 
-  fftw_complex *in = fftw_alloc_complex(width * width * width);
-  fftw_complex *out = fftw_alloc_complex(8 * width * width * width);
+  fftw_complex *in = fftw_alloc_complex(x_width * y_width * z_width);
+  fftw_complex *out = fftw_alloc_complex(8 * x_width * y_width * z_width);
 
   time_point_save(&begin_plan);
-  interpolate_plan plan = plan_interpolate_3d(width, width, width, in, out);
+  interpolate_plan plan = plan_interpolate_3d(x_width, y_width, z_width, in, out);
   time_point_save(&end_plan);
 
 
-  for(int x=0; x < width; ++x)
+  for(int x=0; x < x_width; ++x)
   {
-    for(int y=0; y < width; ++y)
+    for(int y=0; y < y_width; ++y)
     {
-      for(int z=0; z < width; ++z)
+      for(int z=0; z < z_width; ++z)
       {
-        const int offset = x*width*width + y*width + z;
-        const double x_pos = (x * 2.0 * pi)/width;
-        const double y_pos = (y * 2.0 * pi)/width;
-        const double z_pos = (z * 2.0 * pi)/width;
+        const int offset = x*y_width*z_width + y*z_width + z;
+        const double x_pos = (x * 2.0 * pi)/x_width;
+        const double y_pos = (y * 2.0 * pi)/y_width;
+        const double z_pos = (z * 2.0 * pi)/z_width;
 
         in[offset] = test_function(x_pos, y_pos, z_pos);
 
-        //printf("in[%d][%d][%d] = %f\n", x, y, z, in[offset][0]);
+        //printf("in[%d][%d][%d] = %f\n", x, y, z, creal(in[offset]));
       }
     }
   }
@@ -269,27 +271,27 @@ int main(int argc, char **argv)
 
   double abs_val = 0.0;
 
-  for(int x=0; x < 2 * width; ++x)
+  for(int x=0; x < 2 * x_width; ++x)
   {
-    for(int y=0; y < 2 * width; ++y)
+    for(int y=0; y < 2 * y_width; ++y)
     {
-      for(int z=0; z < 2 * width; ++z)
+      for(int z=0; z < 2 * z_width; ++z)
       {
-        const int offset = 4*x*width*width + 2*y*width + z;
-        const double x_pos = (x * pi)/width;
-        const double y_pos = (y * pi)/width;
-        const double z_pos = (z * pi)/width;
+        const int offset = 4*x*y_width*z_width + 2*y*z_width + z;
+        const double x_pos = (x * pi)/x_width;
+        const double y_pos = (y * pi)/y_width;
+        const double z_pos = (z * pi)/z_width;
 
         const double expected = test_function(x_pos, y_pos, z_pos);
         //printf("out(e)[%d][%d][%d] = %f\n", x, y, z, expected);
-        //printf("out(a)[%d][%d][%d] = %f\n", x, y, z, out[offset][0]);
+        //printf("out(a)[%d][%d][%d] = %f\n", x, y, z, creal(out[offset]));
 
         abs_val += cabs(out[offset] - expected);
       }
     }
   }
 
-  printf("Problem size: %d\n", width);
+  printf("Problem size: %d x %d x %d\n", x_width, y_width, z_width);
   printf("Planning time: %f\n", time_point_delta(&begin_plan, &end_plan));
   printf("Execution time: %f\n", time_point_delta(&begin_resample, &end_resample));
   printf("Delta: %f\n", abs_val);
