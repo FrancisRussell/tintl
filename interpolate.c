@@ -151,11 +151,13 @@ static void gather_blocks(interpolate_plan plan, fftw_complex *blocks[8], fftw_c
 
 void interpolate_execute(const interpolate_plan plan, fftw_complex *in, fftw_complex *out)
 {
+  const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
+  fftw_complex *const block_data = fftw_alloc_complex(7 * block_size);
   fftw_complex *blocks[8];
   blocks[0] = in;
 
   for(int block = 1; block < 8; ++block)
-    blocks[block] = fftw_alloc_complex(plan->dims[0] * plan->dims[1] * plan->dims[2]);
+    blocks[block] = block_data + (block - 1) * block_size;
 
   expand_dim2(plan, blocks[0], blocks[1]);
 
@@ -167,8 +169,7 @@ void interpolate_execute(const interpolate_plan plan, fftw_complex *in, fftw_com
 
   gather_blocks(plan, blocks, out);
 
-  for(int block = 1; block < 8; ++block)
-    fftw_free(blocks[block]);
+  fftw_free(block_data);
 }
 
 static void expand_dim0(interpolate_plan plan, fftw_complex *in, fftw_complex *out)
