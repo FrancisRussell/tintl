@@ -6,11 +6,16 @@
 #include <stdio.h>
 #include <math.h>
 
+#ifdef __SSE2__
+#include <emmintrin.h>
+#endif
+
 static void expand_dim0(interpolate_plan plan, fftw_complex *in, fftw_complex *out);
 static void expand_dim1(interpolate_plan plan, fftw_complex *in, fftw_complex *out);
 static void expand_dim2(interpolate_plan plan, fftw_complex *in, fftw_complex *out);
 static void build_rotation(int size, fftw_complex *out);
 static void gather_blocks(interpolate_plan plan, fftw_complex *blocks[8], fftw_complex *out);
+static void pointwise_multiply_complex(int size, fftw_complex *a, fftw_complex *b);
 
 interpolate_plan plan_interpolate_3d(int n0, int n1, int n2, fftw_complex *in, fftw_complex *out)
 {
@@ -58,7 +63,6 @@ void interpolate_destroy_plan(interpolate_plan plan)
   free(plan);
 }
 
-
 static void build_rotation(int size, fftw_complex *out)
 {
   const double pi = 3.14159265358979323846;
@@ -81,6 +85,30 @@ static void build_rotation(int size, fftw_complex *out)
       out[freq] = cos(theta) / size + I * sin(theta) / size; 
     }
   }
+}
+
+static void pointwise_multiply_complex(int size, fftw_complex *a, fftw_complex *b)
+{
+#if __SSE2__
+  const __m128d neg = _mm_setr_pd(-1.0, 1.0);
+  for(int i=0; i<size; ++i)
+  {
+    __m128d a_vec, a_imag, a_real, b_vec, res;
+    a_vec = _mm_load_pd((double*)(a + i));
+    b_vec = _mm_load_pd((double*)(b + i));
+    a_imag = _mm_shuffle_pd(a_vec, a_vec, 3);
+    a_real = _mm_shuffle_pd(a_vec, a_vec, 0);
+    res = _mm_mul_pd(b_vec, a_real);
+    b_vec = _mm_shuffle_pd(b_vec, b_vec, 1);
+    b_vec = _mm_mul_pd(b_vec, neg);
+    b_vec = _mm_mul_pd(b_vec, a_imag);
+    res = _mm_add_pd(res, b_vec);
+    _mm_store_pd((double*)(a + i), res);
+  }
+#else
+  for(size_t i = 0; i < size; ++i)
+    a[i] *= b[i];
+#endif
 }
 
 static void gather_blocks(interpolate_plan plan, fftw_complex *blocks[8], fftw_complex *out)
@@ -130,10 +158,7 @@ static void expand_dim0(interpolate_plan plan, fftw_complex *in, fftw_complex *o
     {
       const size_t offset = i1*plan->strides[1] + i2*plan->strides[2];
       fftw_execute_dft(plan->dfts[0], in + offset, out + offset);
-
-      for(int i0=0; i0 < plan->dims[0]; ++i0)
-        (out + offset)[i0] *= plan->rotations[0][i0];
-
+      pointwise_multiply_complex(plan->dims[0], out + offset, plan->rotations[0]);
       fftw_execute_dft(plan->idfts[0], out + offset, out + offset);
     }
   }
