@@ -1,6 +1,7 @@
 #ifndef INTERPOLATE_H
 #define INTERPOLATE_H
 
+#include <complex.h>
 #include <fftw3.h>
 
 typedef struct
