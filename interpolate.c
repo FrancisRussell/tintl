@@ -11,6 +11,8 @@
 #include <emmintrin.h>
 #endif
 
+static const double pi = 3.14159265358979323846;
+
 static void expand_dim0(interpolate_plan plan, fftw_complex *in, fftw_complex *out);
 static void expand_dim1(interpolate_plan plan, fftw_complex *in, fftw_complex *out);
 static void expand_dim2(interpolate_plan plan, fftw_complex *in, fftw_complex *out);
@@ -73,7 +75,6 @@ void interpolate_destroy_plan(interpolate_plan plan)
 
 static void build_rotation(int size, fftw_complex *out)
 {
-  const double pi = 3.14159265358979323846;
   const double theta_base = pi/size;
 
   for(int freq = 0; freq < size; ++freq)
@@ -233,7 +234,6 @@ static double test_function(double x, double y, double z)
 
 int main(int argc, char **argv)
 {
-  const double pi = 3.14159265358979323846;
   const int width = 100;
   time_point_t begin_resample, end_resample, begin_plan, end_plan;
 
