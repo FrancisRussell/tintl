@@ -1,4 +1,5 @@
 #include "interpolate.h"
+#include "timer.h"
 #include <complex.h>
 #include <fftw3.h>
 #include <cblas.h>
@@ -39,17 +40,17 @@ interpolate_plan plan_interpolate_3d(int n0, int n1, int n2, fftw_complex *in, f
 
   for(int dim=0; dim < 3; ++dim)
   {
-    plan->dfts[dim] = fftw_plan_many_dft(1, &plan->dims[dim], 1, 
-      in, NULL, plan->strides[dim], 0, 
-      out, NULL, plan->strides[dim], 0, 
+    plan->dfts[dim] = fftw_plan_many_dft(1, &plan->dims[dim], 1,
+      in, NULL, plan->strides[dim], 0,
+      out, NULL, plan->strides[dim], 0,
       FFTW_FORWARD, flags);
   }
 
   for(int dim=0; dim < 3; ++dim)
   {
-    plan->idfts[dim] = fftw_plan_many_dft(1, &plan->dims[dim], 1, 
-      out, NULL, plan->strides[dim], 0, 
-      out, NULL, plan->strides[dim], 0, 
+    plan->idfts[dim] = fftw_plan_many_dft(1, &plan->dims[dim], 1,
+      out, NULL, plan->strides[dim], 0,
+      out, NULL, plan->strides[dim], 0,
       FFTW_BACKWARD, flags);
   }
 
@@ -83,7 +84,7 @@ static void build_rotation(int size, fftw_complex *out)
       else
         theta = pi + (theta_base * freq);
 
-      out[freq] = cos(theta) / size + I * sin(theta) / size; 
+      out[freq] = cos(theta) / size + I * sin(theta) / size;
     }
   }
 }
@@ -215,9 +216,14 @@ int main(int argc, char **argv)
 {
   const double pi = 3.14159265358979323846;
   const int width = 100;
+  time_point_t begin_resample, end_resample, begin_plan, end_plan;
+
   fftw_complex *in = fftw_alloc_complex(width * width * width);
   fftw_complex *out = fftw_alloc_complex(8 * width * width * width);
+
+  time_point_save(&begin_plan);
   interpolate_plan plan = plan_interpolate_3d(width, width, width, in, out);
+  time_point_save(&end_plan);
 
 
   for(int x=0; x < width; ++x)
@@ -238,7 +244,9 @@ int main(int argc, char **argv)
     }
   }
 
+  time_point_save(&begin_resample);
   interpolate_execute(plan, in, out);
+  time_point_save(&end_resample);
 
   double abs_val = 0.0;
 
@@ -262,6 +270,9 @@ int main(int argc, char **argv)
     }
   }
 
+  printf("Problem size: %d\n", width);
+  printf("Planning time: %f\n", time_point_delta(&begin_plan, &end_plan));
+  printf("Execution time: %f\n", time_point_delta(&begin_resample, &end_resample));
   printf("Delta: %f\n", abs_val);
 
   interpolate_destroy_plan(plan);
