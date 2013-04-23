@@ -1,6 +1,6 @@
 interpolate: interpolate.h
 
-CFLAGS = -std=c99 -Wall
+CFLAGS = -std=c99 -O2 -Wall
 LIBADD = -lfftw3
 
 interpolate: interpolate.o
