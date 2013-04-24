@@ -161,20 +161,31 @@ void interpolate_execute(const interpolate_plan plan, fftw_complex *in, fftw_com
   const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
   fftw_complex *const block_data = fftw_alloc_complex(7 * block_size);
   fftw_complex *blocks[8];
+  time_point_t begin_expand2, begin_expand1, begin_expand0, begin_gather, end;
   blocks[0] = in;
 
   for(int block = 1; block < 8; ++block)
     blocks[block] = block_data + (block - 1) * block_size;
 
+  time_point_save(&begin_expand2);
   expand_dim2(plan, blocks[0], blocks[1]);
 
+  time_point_save(&begin_expand1);
   for(int n = 0; n < 2; ++n)
     expand_dim1(plan, blocks[n], blocks[n + 2]);
 
+  time_point_save(&begin_expand0);
   for(int n = 0; n < 4; ++n)
     expand_dim0(plan, blocks[n], blocks[n + 4]);
 
+  time_point_save(&begin_gather);
   gather_blocks(plan, blocks, out);
+  time_point_save(&end);
+
+  printf("Expand2: %f\n", time_point_delta(&begin_expand2, &begin_expand1));
+  printf("Expand1: %f\n", time_point_delta(&begin_expand1, &begin_expand0));
+  printf("Expand0: %f\n", time_point_delta(&begin_expand0, &begin_gather));
+  printf("Gather: %f\n", time_point_delta(&begin_gather, &end));
 
   fftw_free(block_data);
 }
