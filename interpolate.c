@@ -13,9 +13,9 @@
 
 static const double pi = 3.14159265358979323846;
 
-static void expand_dim0(interpolate_plan plan, fftw_complex *in, fftw_complex *out);
-static void expand_dim1(interpolate_plan plan, fftw_complex *in, fftw_complex *out);
-static void expand_dim2(interpolate_plan plan, fftw_complex *in, fftw_complex *out);
+static void expand_dim0(interpolate_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch);
+static void expand_dim1(interpolate_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch);
+static void expand_dim2(interpolate_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch);
 static void build_rotation(int size, fftw_complex *out);
 static void gather_blocks(interpolate_plan plan, fftw_complex *blocks[8], fftw_complex *out);
 static void pointwise_multiply_complex(int size, fftw_complex *a, fftw_complex *b);
@@ -44,16 +44,16 @@ interpolate_plan plan_interpolate_3d(int n0, int n1, int n2, fftw_complex *in, f
   {
     plan->dfts[dim] = fftw_plan_many_dft(1, &plan->dims[dim], 1,
       in, NULL, plan->strides[dim], 0,
-      out, NULL, plan->strides[dim], 0,
+      out, NULL, 1, 0,
       FFTW_FORWARD, flags);
   }
 
   for(int dim=0; dim < 3; ++dim)
   {
     plan->idfts[dim] = fftw_plan_many_dft(1, &plan->dims[dim], 1,
+      in, NULL, 1, 0,
       out, NULL, plan->strides[dim], 0,
-      out, NULL, plan->strides[dim], 0,
-      FFTW_BACKWARD, flags);
+      FFTW_BACKWARD, flags | FFTW_DESTROY_INPUT);
   }
 
   return plan;
@@ -167,16 +167,22 @@ void interpolate_execute(const interpolate_plan plan, fftw_complex *in, fftw_com
   for(int block = 1; block < 8; ++block)
     blocks[block] = block_data + (block - 1) * block_size;
 
+  int max_dim = 0;
+  for(int dim=0; dim < 3; ++dim)
+    max_dim = (max_dim < plan->dims[dim] ? plan->dims[dim] : max_dim);
+
+  fftw_complex *const scratch = fftw_alloc_complex(2 * max_dim);
+
   time_point_save(&begin_expand2);
-  expand_dim2(plan, blocks[0], blocks[1]);
+  expand_dim2(plan, blocks[0], blocks[1], scratch);
 
   time_point_save(&begin_expand1);
   for(int n = 0; n < 2; ++n)
-    expand_dim1(plan, blocks[n], blocks[n + 2]);
+    expand_dim1(plan, blocks[n], blocks[n + 2], scratch);
 
   time_point_save(&begin_expand0);
   for(int n = 0; n < 4; ++n)
-    expand_dim0(plan, blocks[n], blocks[n + 4]);
+    expand_dim0(plan, blocks[n], blocks[n + 4], scratch);
 
   time_point_save(&begin_gather);
   gather_blocks(plan, blocks, out);
@@ -187,53 +193,48 @@ void interpolate_execute(const interpolate_plan plan, fftw_complex *in, fftw_com
   printf("Expand0: %f\n", time_point_delta(&begin_expand0, &begin_gather));
   printf("Gather: %f\n", time_point_delta(&begin_gather, &end));
 
+  fftw_free(scratch);
   fftw_free(block_data);
 }
 
-static void expand_dim0(interpolate_plan plan, fftw_complex *in, fftw_complex *out)
+static void expand_dim0(interpolate_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch)
 {
   for(int i2=0; i2 < plan->dims[2]; ++i2)
   {
     for(int i1=0; i1 < plan->dims[1]; ++i1)
     {
       const size_t offset = i1*plan->strides[1] + i2*plan->strides[2];
-      fftw_execute_dft(plan->dfts[0], in + offset, out + offset);
-      pointwise_multiply_complex(plan->dims[0], out + offset, plan->rotations[0]);
-      fftw_execute_dft(plan->idfts[0], out + offset, out + offset);
+      fftw_execute_dft(plan->dfts[0], in + offset, scratch);
+      pointwise_multiply_complex(plan->dims[0], scratch, plan->rotations[0]);
+      fftw_execute_dft(plan->idfts[0], scratch, out + offset);
     }
   }
 }
 
-static void expand_dim1(interpolate_plan plan, fftw_complex *in, fftw_complex *out)
+static void expand_dim1(interpolate_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch)
 {
   for(int i2=0; i2 < plan->dims[2]; ++i2)
   {
     for(int i0=0; i0 < plan->dims[0]; ++i0)
     {
       const size_t offset = i0 + i2*plan->strides[2];
-      fftw_execute_dft(plan->dfts[1], in + offset, out + offset);
-
-      for(int i1=0; i1 < plan->dims[1]; ++i1)
-        (out + offset)[i1*plan->strides[1]] *= plan->rotations[1][i1];
-
-      fftw_execute_dft(plan->idfts[1], out + offset, out + offset);
+      fftw_execute_dft(plan->dfts[1], in + offset, scratch);
+      pointwise_multiply_complex(plan->dims[1], scratch, plan->rotations[1]);
+      fftw_execute_dft(plan->idfts[1], scratch, out + offset);
     }
   }
 }
 
-static void expand_dim2(interpolate_plan plan, fftw_complex *in, fftw_complex *out)
+static void expand_dim2(interpolate_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch)
 {
   for(int i1=0; i1 < plan->dims[1]; ++i1)
   {
     for(int i0=0; i0 < plan->dims[0]; ++i0)
     {
       const size_t offset = i1*plan->strides[1] + i0;
-      fftw_execute_dft(plan->dfts[2], in + offset, out + offset);
-
-      for(int i2 = 0; i2 < plan->dims[2]; ++i2)
-        (out + offset)[i2*plan->strides[2]] *= plan->rotations[2][i2];
-
-      fftw_execute_dft(plan->idfts[2], out + offset, out + offset);
+      fftw_execute_dft(plan->dfts[2], in + offset, scratch);
+      pointwise_multiply_complex(plan->dims[2], scratch, plan->rotations[2]);
+      fftw_execute_dft(plan->idfts[2], scratch, out + offset);
     }
   }
 }
