@@ -18,6 +18,15 @@ static void build_rotation(int size, fftw_complex *out);
 static void gather_blocks(interpolate_plan plan, fftw_complex *blocks[8], fftw_complex *out);
 static void pointwise_multiply_complex(int size, fftw_complex *a, fftw_complex *b);
 static void interleave_complex(int size, fftw_complex *out, const fftw_complex *even, const fftw_complex *odd);
+static int max_dimension(const interpolate_plan plan);
+
+static int max_dimension(const interpolate_plan plan)
+{
+  int max_dim = 0;
+  for(int dim=0; dim < 3; ++dim)
+    max_dim = (max_dim < plan->dims[dim] ? plan->dims[dim] : max_dim);
+  return max_dim;
+}
 
 interpolate_plan plan_interpolate_3d(int n0, int n1, int n2, fftw_complex *in, fftw_complex *out)
 {
@@ -38,22 +47,25 @@ interpolate_plan plan_interpolate_3d(int n0, int n1, int n2, fftw_complex *in, f
     build_rotation(plan->dims[dim], plan->rotations[dim]);
   }
 
+  fftw_complex *const scratch = fftw_alloc_complex(max_dimension(plan));
+
   for(int dim=0; dim < 3; ++dim)
   {
     plan->dfts[dim] = fftw_plan_many_dft(1, &plan->dims[dim], 1,
       in, NULL, plan->strides[dim], 0,
-      out, NULL, 1, 0,
+      scratch, NULL, 1, 0,
       FFTW_FORWARD, flags);
   }
 
   for(int dim=0; dim < 3; ++dim)
   {
     plan->idfts[dim] = fftw_plan_many_dft(1, &plan->dims[dim], 1,
-      in, NULL, 1, 0,
+      scratch, NULL, 1, 0,
       out, NULL, plan->strides[dim], 0,
       FFTW_BACKWARD, flags | FFTW_DESTROY_INPUT);
   }
 
+  fftw_free(scratch);
   return plan;
 }
 
@@ -164,10 +176,7 @@ void interpolate_execute(const interpolate_plan plan, fftw_complex *in, fftw_com
   for(int block = 1; block < 8; ++block)
     blocks[block] = block_data + (block - 1) * block_size;
 
-  int max_dim = 0;
-  for(int dim=0; dim < 3; ++dim)
-    max_dim = (max_dim < plan->dims[dim] ? plan->dims[dim] : max_dim);
-
+  const int max_dim = max_dimension(plan);
   fftw_complex *const scratch = fftw_alloc_complex(2 * max_dim);
 
   time_point_save(&plan->before_expand2);
