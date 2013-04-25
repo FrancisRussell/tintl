@@ -1,2 +1,4 @@
-/interpolate
 *.o
+*.so
+*.swp
+bin/benchmark
