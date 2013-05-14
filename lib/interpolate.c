@@ -30,7 +30,7 @@ static int max_dimension(const interpolate_plan plan)
 
 interpolate_plan plan_interpolate_3d(int n0, int n1, int n2, fftw_complex *in, fftw_complex *out)
 {
-  int flags = 0;
+  int flags = FFTW_MEASURE;
   interpolate_plan_s *const plan = malloc(sizeof(interpolate_plan_s));
 
   plan->dims[0] = n2;
