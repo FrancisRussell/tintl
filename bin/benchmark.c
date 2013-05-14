@@ -23,7 +23,7 @@ static void perform_timing(interpolate_interface interface,
   fftw_complex *out = fftw_alloc_complex(8 * x_width * y_width * z_width);
 
   time_point_save(&begin_plan);
-  void *const plan = interface.plan(x_width, y_width, z_width, in, out);
+  void *const plan = interface.plan(x_width, y_width, z_width, in, out, 0);
   time_point_save(&end_plan);
 
 

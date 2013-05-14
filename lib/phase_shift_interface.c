@@ -1,9 +1,9 @@
 #include "phase_shift_interface.h"
 #include "interpolate.h"
 
-static void *plan_interpolate_3d_wrapper(int n0, int n1, int n2, fftw_complex *in, fftw_complex *out)
+static void *plan_interpolate_3d_wrapper(int n0, int n1, int n2, fftw_complex *in, fftw_complex *out, int flags)
 {
-  return plan_interpolate_3d(n0, n1, n2, in, out);
+  return plan_interpolate_3d(n0, n1, n2, in, out, flags);
 }
 
 static void interpolate_execute_wrapper(const void *plan, fftw_complex *in, fftw_complex *out)

@@ -1,11 +1,12 @@
 interface
-  type(C_PTR) function plan_interpolate_3d(n0,n1,n2,in,out) bind(C, name='plan_interpolate_3d')
+  type(C_PTR) function plan_interpolate_3d(n0,n1,n2,in,out,flags) bind(C, name='plan_interpolate_3d')
     import
     integer(C_INT), value :: n0
     integer(C_INT), value :: n1
     integer(C_INT), value :: n2
     complex(C_DOUBLE_COMPLEX), dimension(*), intent(in) :: in
     complex(C_DOUBLE_COMPLEX), dimension(*), intent(out) :: out
+    integer(C_INT), value :: flags
   end function plan_interpolate_3d
 
   subroutine interpolate_execute(plan,in,out) bind(C, name='interpolate_execute')
