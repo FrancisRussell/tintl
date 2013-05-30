@@ -7,6 +7,7 @@
 
 typedef struct
 {
+  int interpolation;
   int dims[3];
   int strides[3];
 
@@ -29,6 +30,9 @@ void interpolate_execute(const interpolate_plan plan, fftw_complex *in, fftw_com
 
 interpolate_plan plan_interpolate_3d_split(int n0, int n1, int n2, int flags);
 void interpolate_execute_split(const interpolate_plan plan, double *rin, double *iin, double *rout, double *iout);
+
+interpolate_plan plan_interpolate_3d_split_product(int n0, int n1, int n2, int flags);
+void interpolate_execute_split_product(const interpolate_plan plan, double *rin, double *iin, double *out);
 
 void interpolate_print_timings(const interpolate_plan plan);
 void interpolate_destroy_plan(interpolate_plan plan);
