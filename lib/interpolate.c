@@ -234,7 +234,26 @@ static void interleave_complex(int size, fftw_complex *out, const fftw_complex *
 
 static void interleave_real(int size, double *out, const double *even, const double *odd)
 {
-  for(int i = 0; i < size; ++i)
+  int i = 0;
+
+#ifdef __SSE2__
+  if ((((uintptr_t) out | (uintptr_t) even | (uintptr_t) odd) & SSE_ALIGN_MASK) == 0)
+  {
+    for(; i + (SSE_ALIGN / sizeof(double)) <= size; i += (SSE_ALIGN / sizeof(double)))
+    {
+      __m128d even_vec, odd_vec, first_vec, second_vec;
+      even_vec = _mm_load_pd((even + i));
+      odd_vec = _mm_load_pd((odd + i));
+      first_vec = _mm_shuffle_pd(even_vec, odd_vec, 0);
+      second_vec = _mm_shuffle_pd(even_vec, odd_vec, 3);
+      _mm_store_pd(out + i * 2, first_vec);
+      _mm_store_pd(out + i * 2 + 2, second_vec);
+    }
+  }
+#endif
+
+  // This also handles the final element in the (size % 2 == 1) case.
+  for(;i < size; ++i)
   {
     out[i*2] = even[i];
     out[i*2 + 1] = odd[i];
@@ -266,7 +285,7 @@ static void pointwise_multiply_complex(int size, fftw_complex *a, const fftw_com
   else
   {
 #endif
-    for(size_t i = 0; i < size; ++i)
+    for(int i = 0; i < size; ++i)
       a[i] *= b[i];
 #ifdef __SSE2__
   }
@@ -275,7 +294,24 @@ static void pointwise_multiply_complex(int size, fftw_complex *a, const fftw_com
 
 static void pointwise_multiply_real(int size, double *a, const double *b)
 {
-  for(size_t i = 0; i < size; ++i)
+  int i = 0;
+
+#ifdef __SSE2__
+  if ((((uintptr_t) a | (uintptr_t) b) & SSE_ALIGN_MASK) == 0)
+  {
+    for(; i + (SSE_ALIGN / sizeof(double)) <= size; i += (SSE_ALIGN / sizeof(double)))
+    {
+      __m128d a_vec, b_vec, res;
+      a_vec = _mm_load_pd(a + i);
+      b_vec = _mm_load_pd(b + i);
+      res = _mm_mul_pd(a_vec, b_vec);
+      _mm_store_pd((a + i), res);
+    }
+  }
+#endif
+
+  // This also handles the final element in the (size % 2 == 1) case.
+  for(; i < size; ++i)
     a[i] *= b[i];
 }
 
