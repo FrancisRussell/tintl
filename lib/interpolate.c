@@ -13,6 +13,12 @@
 
 static const double pi = 3.14159265358979323846;
 
+enum
+{
+  SSE_ALIGN = 1 << 4,
+  SSE_ALIGN_MASK = SSE_ALIGN - 1
+};
+
 typedef enum
 {
   INTERLEAVED,
@@ -40,12 +46,12 @@ static void pointwise_multiply_real(int size, double *a, const double *b);
 static void interpolate_split_common(const interpolate_plan plan, double *blocks[8][2]);
 static void build_rotation(int size, fftw_complex *out);
 static int max_dimension(const interpolate_plan plan);
-static int round16(int value);
+static int round_align(int value);
 
-static int round16(const int value)
+static int round_align(const int value)
 {
-  const int remainder = value % 16;
-  return (remainder == 0 ? value : value + 16 - remainder);
+  const int remainder = value % SSE_ALIGN;
+  return (remainder == 0 ? value : value + SSE_ALIGN - remainder);
 }
 
 static int max_dimension(const interpolate_plan plan)
@@ -202,19 +208,26 @@ static void build_rotation(int size, fftw_complex *out)
 static void interleave_complex(int size, fftw_complex *out, const fftw_complex *even, const fftw_complex *odd)
 {
 #ifdef __SSE2__
-  // This does not result in any observable performance improvement
-  for(int i = 0; i < size; ++i)
+  if ((((uintptr_t) out | (uintptr_t) even | (uintptr_t) odd) & SSE_ALIGN_MASK) == 0)
   {
-    __m128d even_vec = _mm_load_pd((const double*)(even + i));
-    __m128d odd_vec = _mm_load_pd((const double*)(odd + i));
-    _mm_store_pd((double*)(out + i*2), even_vec);
-    _mm_store_pd((double*)(out + i*2 + 1), odd_vec);
+    // This does not result in any observable performance improvement
+    for(int i = 0; i < size; ++i)
+    {
+      __m128d even_vec = _mm_load_pd((const double*)(even + i));
+      __m128d odd_vec = _mm_load_pd((const double*)(odd + i));
+      _mm_store_pd((double*)(out + i*2), even_vec);
+      _mm_store_pd((double*)(out + i*2 + 1), odd_vec);
+    }
   }
-#else
-  for(int i = 0; i < size; ++i)
+  else
   {
-    out[i*2] = even[i];
-    out[i*2 + 1] = odd[i];
+#endif
+    for(int i = 0; i < size; ++i)
+    {
+      out[i*2] = even[i];
+      out[i*2 + 1] = odd[i];
+    }
+#ifdef __SSE2__
   }
 #endif
 }
@@ -231,25 +244,32 @@ static void interleave_real(int size, double *out, const double *even, const dou
 static void pointwise_multiply_complex(int size, fftw_complex *a, const fftw_complex *b)
 {
 #ifdef __SSE2__
-  // This *does* result in an observable performance improvement
-  const __m128d neg = _mm_setr_pd(-1.0, 1.0);
-  for(int i = 0; i<size; ++i)
+  if ((((uintptr_t) b | (uintptr_t) a) & SSE_ALIGN_MASK) == 0)
   {
-    __m128d a_vec, a_imag, a_real, b_vec, res;
-    a_vec = _mm_load_pd((const double*)(a + i));
-    b_vec = _mm_load_pd((const double*)(b + i));
-    a_imag = _mm_shuffle_pd(a_vec, a_vec, 3);
-    a_real = _mm_shuffle_pd(a_vec, a_vec, 0);
-    res = _mm_mul_pd(b_vec, a_real);
-    b_vec = _mm_shuffle_pd(b_vec, b_vec, 1);
-    b_vec = _mm_mul_pd(b_vec, neg);
-    b_vec = _mm_mul_pd(b_vec, a_imag);
-    res = _mm_add_pd(res, b_vec);
-    _mm_store_pd((double*)(a + i), res);
+    // This *does* result in an observable performance improvement
+    const __m128d neg = _mm_setr_pd(-1.0, 1.0);
+    for(int i = 0; i<size; ++i)
+    {
+      __m128d a_vec, a_imag, a_real, b_vec, res;
+      a_vec = _mm_load_pd((const double*)(a + i));
+      b_vec = _mm_load_pd((const double*)(b + i));
+      a_imag = _mm_shuffle_pd(a_vec, a_vec, 3);
+      a_real = _mm_shuffle_pd(a_vec, a_vec, 0);
+      res = _mm_mul_pd(b_vec, a_real);
+      b_vec = _mm_shuffle_pd(b_vec, b_vec, 1);
+      b_vec = _mm_mul_pd(b_vec, neg);
+      b_vec = _mm_mul_pd(b_vec, a_imag);
+      res = _mm_add_pd(res, b_vec);
+      _mm_store_pd((double*)(a + i), res);
+    }
   }
-#else
-  for(size_t i = 0; i < size; ++i)
-    a[i] *= b[i];
+  else
+  {
+#endif
+    for(size_t i = 0; i < size; ++i)
+      a[i] *= b[i];
+#ifdef __SSE2__
+  }
 #endif
 }
 
@@ -347,7 +367,7 @@ void interpolate_execute_split(const interpolate_plan plan, double *rin, double 
   assert(SPLIT == plan->interpolation);
 
   const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
-  const int rounded_block_size = round16(block_size);
+  const int rounded_block_size = round_align(block_size);
   double *const block_data = fftw_alloc_real(2 * 7 * rounded_block_size);
   double *blocks[8][2];
 
@@ -384,7 +404,7 @@ void interpolate_execute_split_product(const interpolate_plan plan, double *rin,
   assert(SPLIT_PRODUCT == plan->interpolation);
 
   const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
-  const int rounded_block_size = round16(block_size);
+  const int rounded_block_size = round_align(block_size);
   double *const block_data = fftw_alloc_real(2 * 7 * rounded_block_size);
   double *blocks[8][2];
 
