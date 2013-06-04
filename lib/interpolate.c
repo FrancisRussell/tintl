@@ -1,5 +1,6 @@
 #include "interpolate.h"
 #include "timer.h"
+#include "allocation.h"
 #include <complex.h>
 #include <stdint.h>
 #include <fftw3.h>
@@ -78,11 +79,11 @@ interpolate_plan plan_interpolate_3d(int n0, int n1, int n2, fftw_complex *in, f
 
   for(int dim = 0; dim < 3; ++dim)
   {
-    plan->rotations[dim] = fftw_alloc_complex(plan->dims[dim]);
+    plan->rotations[dim] = rs_alloc_complex(plan->dims[dim]);
     build_rotation(plan->dims[dim], plan->rotations[dim]);
   }
 
-  fftw_complex *const scratch = fftw_alloc_complex(max_dimension(plan));
+  fftw_complex *const scratch = rs_alloc_complex(max_dimension(plan));
 
   for(int dim=0; dim < 3; ++dim)
   {
@@ -100,7 +101,7 @@ interpolate_plan plan_interpolate_3d(int n0, int n1, int n2, fftw_complex *in, f
       FFTW_BACKWARD, flags | FFTW_DESTROY_INPUT);
   }
 
-  fftw_free(scratch);
+  rs_free(scratch);
   return plan;
 }
 
@@ -120,14 +121,14 @@ interpolate_plan plan_interpolate_3d_split(int n0, int n1, int n2, int flags)
 
   for(int dim = 0; dim < 3; ++dim)
   {
-    plan->rotations[dim] = fftw_alloc_complex(plan->dims[dim]);
+    plan->rotations[dim] = rs_alloc_complex(plan->dims[dim]);
     build_rotation(plan->dims[dim], plan->rotations[dim]);
   }
 
   const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
-  double *const realScratch = fftw_alloc_real(block_size);
-  double *const imagScratch = fftw_alloc_real(block_size);
-  fftw_complex *const scratch = fftw_alloc_complex(max_dimension(plan));
+  double *const realScratch = rs_alloc_real(block_size);
+  double *const imagScratch = rs_alloc_real(block_size);
+  fftw_complex *const scratch = rs_alloc_complex(max_dimension(plan));
 
   for(int dim=0; dim < 3; ++dim)
   {
@@ -155,9 +156,9 @@ interpolate_plan plan_interpolate_3d_split(int n0, int n1, int n2, int flags)
       flags | FFTW_DESTROY_INPUT);
   }
 
-  fftw_free(scratch);
-  fftw_free(imagScratch);
-  fftw_free(realScratch);
+  rs_free(scratch);
+  rs_free(imagScratch);
+  rs_free(realScratch);
   return plan;
 }
 
@@ -171,7 +172,7 @@ interpolate_plan plan_interpolate_3d_split_product(int n0, int n1, int n2, int f
 void interpolate_destroy_plan(interpolate_plan plan)
 {
   for(int dim = 0; dim < 3; ++dim)
-    fftw_free(plan->rotations[dim]);
+    rs_free(plan->rotations[dim]);
 
   for(int dim = 0; dim < 3; ++dim)
     fftw_destroy_plan(plan->dfts[dim]);
@@ -350,7 +351,7 @@ void interpolate_execute(const interpolate_plan plan, fftw_complex *in, fftw_com
   assert(INTERLEAVED == plan->interpolation);
 
   const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
-  fftw_complex *const block_data = fftw_alloc_complex(7 * block_size);
+  fftw_complex *const block_data = rs_alloc_complex(7 * block_size);
   fftw_complex *blocks[8];
   blocks[0] = in;
 
@@ -358,7 +359,7 @@ void interpolate_execute(const interpolate_plan plan, fftw_complex *in, fftw_com
     blocks[block] = block_data + (block - 1) * block_size;
 
   const int max_dim = max_dimension(plan);
-  fftw_complex *const scratch = fftw_alloc_complex(max_dim);
+  fftw_complex *const scratch = rs_alloc_complex(max_dim);
 
   time_point_save(&plan->before_expand2);
   expand_dim2(plan, blocks[0], blocks[1], scratch);
@@ -375,14 +376,14 @@ void interpolate_execute(const interpolate_plan plan, fftw_complex *in, fftw_com
   gather_blocks_complex(plan, blocks, out);
   time_point_save(&plan->end);
 
-  fftw_free(scratch);
-  fftw_free(block_data);
+  rs_free(scratch);
+  rs_free(block_data);
 }
 
 static void interpolate_split_common(const interpolate_plan plan, double *blocks[8][2])
 {
   const int max_dim = max_dimension(plan);
-  fftw_complex *const scratch = fftw_alloc_complex(max_dim);
+  fftw_complex *const scratch = rs_alloc_complex(max_dim);
 
   time_point_save(&plan->before_expand2);
   expand_dim2_split(plan, blocks[0], blocks[1], scratch);
@@ -395,7 +396,7 @@ static void interpolate_split_common(const interpolate_plan plan, double *blocks
   for(int n = 0; n < 4; ++n)
     expand_dim0_split(plan, blocks[n], blocks[n + 4], scratch);
 
-  fftw_free(scratch);
+  rs_free(scratch);
 }
 
 void interpolate_execute_split(const interpolate_plan plan, double *rin, double *iin, double *rout, double *iout)
@@ -404,7 +405,7 @@ void interpolate_execute_split(const interpolate_plan plan, double *rin, double 
 
   const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
   const int rounded_block_size = round_align(block_size);
-  double *const block_data = fftw_alloc_real(2 * 7 * rounded_block_size);
+  double *const block_data = rs_alloc_real(2 * 7 * rounded_block_size);
   double *blocks[8][2];
 
   blocks[0][0] = rin;
@@ -432,7 +433,7 @@ void interpolate_execute_split(const interpolate_plan plan, double *rin, double 
   gather_blocks_real(plan, imag_blocks, iout);
   time_point_save(&plan->end);
 
-  fftw_free(block_data);
+  rs_free(block_data);
 }
 
 void interpolate_execute_split_product(const interpolate_plan plan, double *rin, double *iin, double *out)
@@ -441,7 +442,7 @@ void interpolate_execute_split_product(const interpolate_plan plan, double *rin,
 
   const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
   const int rounded_block_size = round_align(block_size);
-  double *const block_data = fftw_alloc_real(2 * 7 * rounded_block_size);
+  double *const block_data = rs_alloc_real(2 * 7 * rounded_block_size);
   double *blocks[8][2];
 
   blocks[0][0] = rin;
@@ -467,7 +468,7 @@ void interpolate_execute_split_product(const interpolate_plan plan, double *rin,
   gather_blocks_real(plan, result_blocks, out);
   time_point_save(&plan->end);
 
-  fftw_free(block_data);
+  rs_free(block_data);
 }
 
 void interpolate_print_timings(const interpolate_plan plan)

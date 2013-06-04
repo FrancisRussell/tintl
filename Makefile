@@ -9,7 +9,7 @@ bin/benchmark: lib/libresample.so include/timer.h include/interpolate.h
 lib/%.o: lib/%.c
 	${CC} ${CFLAGS} -c $< -o $@
 
-lib/libresample.so: lib/interpolate.o lib/timer.o lib/phase_shift_interface.o
+lib/libresample.so: lib/interpolate.o lib/timer.o lib/phase_shift_interface.o lib/allocation.o
 	$(CC) -shared -fPIC $^ -o $@ $(LIBADD)
 
 bin/%: bin/%.c
@@ -19,6 +19,7 @@ lib/timer.o: include/timer.h
 lib/interpolate.o: include/timer.h include/interpolate.h
 
 clean: 
-	rm -f lib/libresample.so lib/interpolate.o lib/phase_shift_interface.o lib/timer.o bin/benchmark
+	rm -f lib/libresample.so lib/interpolate.o lib/phase_shift_interface.o \
+	  lib/allocation.o lib/timer.o bin/benchmark
 
 .PHONY: clean

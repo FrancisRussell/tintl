@@ -1,4 +1,5 @@
 #include "timer.h"
+#include "allocation.h"
 #include "interpolate_interface.h"
 #include "phase_shift_interface.h"
 #include <complex.h>
@@ -19,8 +20,8 @@ static void perform_timing(interpolate_interface interface,
 {
   time_point_t begin_resample, end_resample, begin_plan, end_plan;
 
-  fftw_complex *in = fftw_alloc_complex(x_width * y_width * z_width);
-  fftw_complex *out = fftw_alloc_complex(8 * x_width * y_width * z_width);
+  fftw_complex *in = rs_alloc_complex(x_width * y_width * z_width);
+  fftw_complex *out = rs_alloc_complex(8 * x_width * y_width * z_width);
 
   time_point_save(&begin_plan);
   void *const plan = interface.plan(x_width, y_width, z_width, in, out, 0);
@@ -73,8 +74,8 @@ static void perform_timing(interpolate_interface interface,
   printf("Execution time: %f\n", time_point_delta(&begin_resample, &end_resample));
   printf("Delta: %f\n", abs_val);
 
-  fftw_free(in);
-  fftw_free(out);
+  rs_free(in);
+  rs_free(out);
   interface.destroy_plan(plan);
 }
 
