@@ -7,12 +7,16 @@
 
 typedef struct
 {
+  int stage[3];
   int interpolation;
   int dims[3];
   int strides[3];
 
   fftw_plan dfts[3];
+  fftw_plan dfts_staged[3];
+
   fftw_plan idfts[3];
+  fftw_plan idfts_staged[3];
 
   fftw_complex *rotations[3];
 
