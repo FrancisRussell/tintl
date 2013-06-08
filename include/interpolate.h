@@ -7,7 +7,7 @@
 
 typedef struct
 {
-  int stage[3];
+  int stage[2][3];
   int interpolation;
   int dims[3];
   int strides[3];
