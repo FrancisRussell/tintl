@@ -1,19 +1,21 @@
-COMMON_FLAGS = -Wall -pedantic -O2
-CFLAGS = ${COMMON_FLAGS} -std=c99 -fPIC -Iinclude
-LIBADD = -lfftw3
+FFTW_LDLIBS = -lfftw3
+FFTW_INCLUDES=
+FFTW_LDFLAGS=
+COMMON_FLAGS = -Wall -pedantic -O3
+CFLAGS = $(COMMON_FLAGS) $(FFTW_INCLUDES) -std=c99 -fPIC -Iinclude
 
 default: lib/libresample.so bin/benchmark
 
 bin/benchmark: lib/libresample.so include/timer.h include/interpolate.h
 
 lib/%.o: lib/%.c
-	${CC} ${CFLAGS} -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 
 lib/libresample.so: lib/interpolate.o lib/timer.o lib/phase_shift_interface.o lib/allocation.o
-	$(CC) -shared -fPIC $^ -o $@ $(LIBADD)
+	$(CC) -shared -fPIC $(FFTW_LDFLAGS) $^ -o $@ $(FFTW_LDLIBS)
 
 bin/%: bin/%.c
-	${CC} ${CFLAGS} $< -Llib -lresample -lfftw3 -Wl,-rpath=../lib -o $@
+	$(CC) $(CFLAGS) $< -Llib -lresample -Wl,-rpath=../lib -o $@
 
 lib/timer.o: include/timer.h
 lib/interpolate.o: include/timer.h include/interpolate.h
