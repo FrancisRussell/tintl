@@ -120,6 +120,8 @@ static int max_dimension(const interpolate_plan plan)
 
 static void plan_common(interpolate_plan plan, int n0, int n1, int n2, int flags)
 {
+  flags |= FFTW_MEASURE;
+
   plan->dims[0] = n2;
   plan->dims[1] = n1;
   plan->dims[2] = n0;
