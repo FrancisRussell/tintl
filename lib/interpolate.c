@@ -1,6 +1,7 @@
 #include "interpolate.h"
 #include "timer.h"
 #include "allocation.h"
+#include "fftw_cycle.h"
 #include <complex.h>
 #include <stdint.h>
 #include <fftw3.h>
@@ -198,8 +199,6 @@ interpolate_plan plan_interpolate_3d(int n0, int n1, int n2, fftw_complex *in, f
   memset(data_in, 0, block_size * sizeof(fftw_complex));
   memset(data_out, 0, block_size * sizeof(fftw_complex));
 
-  time_point_t before, after;
-
   void (*transform_function[2])(interpolate_plan, int, fftw_complex*, fftw_complex*) = {
     transform_in_interleaved,
     transform_out_interleaved
@@ -210,21 +209,23 @@ interpolate_plan plan_interpolate_3d(int n0, int n1, int n2, fftw_complex *in, f
     stage_out_interleaved
   };
 
+  ticks before, after;
+
   for(int phase = 0; phase < 2; ++phase)
   {
     for(int dim=0; dim< 3; ++dim)
     {
-      time_point_save(&before);
+      before = getticks();
       for(int repeat = 0; repeat < TIMING_ITERATIONS; ++repeat)
         transform_function[phase](plan, dim, data_in, scratch);
-      time_point_save(&after);
-      const double transform_time = time_point_delta(&before, &after);
+      after = getticks();
+      const double transform_time = elapsed(after, before);
 
-      time_point_save(&before);
+      before = getticks();
       for(int repeat = 0; repeat < TIMING_ITERATIONS; ++repeat)
         staged_function[phase](plan, dim, data_out, scratch);
-      time_point_save(&after);
-      const double staged_time = time_point_delta(&before, &after);
+      after = getticks();
+      const double staged_time = elapsed(after, before);
 
       plan->stage[phase][dim] = (staged_time < transform_time);
     }
@@ -295,23 +296,23 @@ interpolate_plan plan_interpolate_3d_split(int n0, int n1, int n2, int flags)
     stage_out_split
   };
 
-  time_point_t before, after;
+  ticks before, after;
 
   for(int phase = 0; phase < 2; ++phase)
   {
     for(int dim=0; dim< 3; ++dim)
     {
-      time_point_save(&before);
+      before = getticks();
       for(int repeat = 0; repeat < TIMING_ITERATIONS; ++repeat)
         transform_function[phase](plan, dim, real_scratch, imag_scratch, scratch);
-      time_point_save(&after);
-      const double transform_time = time_point_delta(&before, &after);
+      after = getticks();
+      const double transform_time = elapsed(after, before);
 
-      time_point_save(&before);
+      before = getticks();
       for(int repeat = 0; repeat < TIMING_ITERATIONS; ++repeat)
         staged_function[phase](plan, dim, real_scratch_2, imag_scratch_2, scratch);
-      time_point_save(&after);
-      const double staged_time = time_point_delta(&before, &after);
+      after = getticks();
+      const double staged_time = elapsed(after, before);
 
       plan->stage[phase][dim] = (staged_time < transform_time);
     }
@@ -789,7 +790,7 @@ static void expand_dim2(interpolate_plan plan, fftw_complex *in, fftw_complex *o
     for(int i0=0; i0 < plan->dims[0]; ++i0)
     {
       const size_t offset = i1*plan->strides[1] + i0;
-      
+
       if (plan->stage[0][dim])
         stage_in_interleaved(plan, dim, in + offset, scratch);
       else

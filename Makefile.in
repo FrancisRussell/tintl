@@ -1,8 +1,11 @@
+CC = @CC@
+FC = @FC@
 FFTW_LDLIBS = -lfftw3
 FFTW_INCLUDES = -I/usr/include
 FFTW_LDFLAGS=
 COMMON_FLAGS = -Wall -pedantic -O3 -fPIC $(FFTW_INCLUDES) -Iinclude
-CFLAGS = $(COMMON_FLAGS) -std=c99
+CFLAGS = $(COMMON_FLAGS)
+FFLAGS = $(COMMON_FLAGS)
 
 default: lib/libresample.so bin/benchmark
 

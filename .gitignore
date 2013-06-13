@@ -1,4 +1,10 @@
 *.o
 *.so
 *.swp
-bin/benchmark
+/bin/benchmark
+/configure
+/config.log
+/config.status
+/autom4te.cache
+/include/interpolate_config.h
+/Makefile
