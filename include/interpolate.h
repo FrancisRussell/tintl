@@ -9,8 +9,14 @@ typedef struct
 {
   int stage[2][3];
   int interpolation;
+  int strategy;
   int dims[3];
   int strides[3];
+  int fine_dims[3];
+  int fine_strides[3];
+
+  fftw_plan naive_forward_interleaved;
+  fftw_plan naive_backward_interleaved;
 
   fftw_plan dfts[3];
   fftw_plan dfts_staged[3];

@@ -30,6 +30,12 @@ typedef enum
   SPLIT_PRODUCT
 } interpolation_t;
 
+typedef enum
+{
+  NAIVE,
+  PHASE_SHIFT
+} strategy_t;
+
 
 static void plan_common(interpolate_plan plan, int n0, int n1, int n2, int flags);
 
@@ -60,6 +66,8 @@ static void interpolate_split_common(const interpolate_plan plan, double *blocks
 static void build_rotation(int size, fftw_complex *out);
 static int max_dimension(const interpolate_plan plan);
 static int round_align(int value);
+
+static void pad_coarse_to_fine_interleaved(interpolate_plan plan, const fftw_complex *from, fftw_complex *to);
 
 static inline void stage_in_split(interpolate_plan plan, int dim, double *rin, double *iin, fftw_complex *scratch)
 {
@@ -127,9 +135,16 @@ static void plan_common(interpolate_plan plan, int n0, int n1, int n2, int flags
   plan->dims[1] = n1;
   plan->dims[2] = n0;
 
+  for(int dim = 0; dim < 3; ++dim)
+    plan->fine_dims[dim] = plan->dims[dim] * 2;
+
   plan->strides[0] = 1;
   plan->strides[1] = n2;
   plan->strides[2] = n2 * n1;
+
+  plan->fine_strides[0] = 1;
+  plan->fine_strides[1] = n2 * 2;
+  plan->fine_strides[2] = n2 * n1 * 4;
 
   for(int dim = 0; dim < 3; ++dim)
   {
@@ -160,6 +175,17 @@ static void plan_common(interpolate_plan plan, int n0, int n1, int n2, int flags
   }
 
   rs_free(scratch);
+
+  const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
+
+  fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
+  fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
+
+  plan->naive_forward_interleaved = fftw_plan_dft(3, plan->dims, scratch_coarse, scratch_coarse, FFTW_FORWARD, flags);
+  plan->naive_backward_interleaved = fftw_plan_dft(3, plan->fine_dims, scratch_fine, scratch_fine, FFTW_BACKWARD, flags);
+
+  rs_free(scratch_coarse);
+  rs_free(scratch_fine);
 }
 
 interpolate_plan plan_interpolate_3d(int n0, int n1, int n2, fftw_complex *in, fftw_complex *out, int flags)
@@ -169,6 +195,7 @@ interpolate_plan plan_interpolate_3d(int n0, int n1, int n2, fftw_complex *in, f
 
   plan_common(plan, n0, n1, n2, flags);
   plan->interpolation = INTERLEAVED;
+  plan->strategy = PHASE_SHIFT;
 
   fftw_complex *const scratch = rs_alloc_complex(max_dimension(plan));
 
@@ -244,6 +271,7 @@ interpolate_plan plan_interpolate_3d_split(int n0, int n1, int n2, int flags)
 
   plan_common(plan, n0, n1, n2, flags);
   plan->interpolation = SPLIT;
+  plan->strategy = PHASE_SHIFT;
 
   const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
   double *const real_scratch = rs_alloc_real(block_size);
@@ -557,33 +585,48 @@ void interpolate_execute(const interpolate_plan plan, fftw_complex *in, fftw_com
   assert(INTERLEAVED == plan->interpolation);
 
   const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
-  fftw_complex *const block_data = rs_alloc_complex(7 * block_size);
-  fftw_complex *blocks[8];
-  blocks[0] = in;
 
-  for(int block = 1; block < 8; ++block)
-    blocks[block] = block_data + (block - 1) * block_size;
+  if (plan->strategy == PHASE_SHIFT)
+  {
+    fftw_complex *const block_data = rs_alloc_complex(7 * block_size);
+    fftw_complex *blocks[8];
+    blocks[0] = in;
 
-  const int max_dim = max_dimension(plan);
-  fftw_complex *const scratch = rs_alloc_complex(max_dim);
+    for(int block = 1; block < 8; ++block)
+      blocks[block] = block_data + (block - 1) * block_size;
 
-  time_point_save(&plan->before_expand2);
-  expand_dim2(plan, blocks[0], blocks[1], scratch);
+    const int max_dim = max_dimension(plan);
+    fftw_complex *const scratch = rs_alloc_complex(max_dim);
 
-  time_point_save(&plan->before_expand1);
-  for(int n = 0; n < 2; ++n)
-    expand_dim1(plan, blocks[n], blocks[n + 2], scratch);
+    time_point_save(&plan->before_expand2);
+    expand_dim2(plan, blocks[0], blocks[1], scratch);
 
-  time_point_save(&plan->before_expand0);
-  for(int n = 0; n < 4; ++n)
-    expand_dim0(plan, blocks[n], blocks[n + 4], scratch);
+    time_point_save(&plan->before_expand1);
+    for(int n = 0; n < 2; ++n)
+      expand_dim1(plan, blocks[n], blocks[n + 2], scratch);
 
-  time_point_save(&plan->before_gather);
-  gather_blocks_complex(plan, blocks, out);
-  time_point_save(&plan->end);
+    time_point_save(&plan->before_expand0);
+    for(int n = 0; n < 4; ++n)
+      expand_dim0(plan, blocks[n], blocks[n + 4], scratch);
 
-  rs_free(scratch);
-  rs_free(block_data);
+    time_point_save(&plan->before_gather);
+    gather_blocks_complex(plan, blocks, out);
+    time_point_save(&plan->end);
+
+    rs_free(scratch);
+    rs_free(block_data);
+  }
+  else
+  {
+    fftw_complex *const input_copy = rs_alloc_complex(block_size);
+    memcpy(input_copy, in, sizeof(fftw_complex) * block_size);
+
+    fftw_execute_dft(plan->naive_forward_interleaved, input_copy, input_copy);
+    pad_coarse_to_fine_interleaved(plan, input_copy, out);
+    fftw_execute_dft(plan->naive_backward_interleaved, out, out);
+
+    rs_free(input_copy);
+  }
 }
 
 static void interpolate_split_common(const interpolate_plan plan, double *blocks[8][2])
@@ -826,6 +869,73 @@ static void expand_dim2_split(interpolate_plan plan, double *in[2], double *out[
         stage_out_split(plan, dim, out[0] + offset, out[1] + offset, scratch);
       else
         transform_out_split(plan, dim, out[0] + offset, out[1] + offset, scratch);
+    }
+  }
+}
+
+static void block_copy_coarse_to_fine_interleaved(interpolate_plan plan, int n0, int n1, int n2, const fftw_complex *from, fftw_complex *to)
+{
+  assert(n0 <= plan->dims[0]);
+  assert(n1 <= plan->dims[1]);
+  assert(n2 <= plan->dims[2]);
+
+  const double scale_factor = 1.0 / (plan->dims[0] * plan->dims[1] * plan->dims[2]);
+
+  for(int i2=0; i2 < n2; ++i2)
+  {
+    for(int i1=0; i1 < n1; ++i1)
+    {
+      for(int i0=0; i0 < n0; ++i0)
+      {
+        to[i0] = from[i0] * scale_factor;
+      }
+        from += plan->strides[1];
+      to += plan->fine_strides[1];
+    }
+
+    from += plan->strides[2] - n1 * plan->strides[1];
+    to += plan->fine_strides[2] - n1 * plan->fine_strides[1];
+  }
+}
+
+static int corner_size(const int n, const int negative)
+{
+  if ((n % 2) == 0)
+    return n/2 - (negative != 0);
+  else
+    return n/2 + (negative == 0);
+}
+
+static void pad_coarse_to_fine_interleaved(interpolate_plan plan, const fftw_complex *from, fftw_complex *to)
+{
+
+  const int coarse_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
+  memset(to, 0, 8 * coarse_size);
+
+  int corner_flags[3];
+
+  for(corner_flags[2] = 0; corner_flags[2] < 2; ++corner_flags[2])
+  {
+    for(corner_flags[1] = 0; corner_flags[1] < 2; ++corner_flags[1])
+    {
+      for(corner_flags[0] = 0; corner_flags[0] < 2; ++corner_flags[0])
+      {
+        const fftw_complex *coarse_block = from;
+        fftw_complex *fine_block = to;
+        int corner_sizes[3];
+
+        for(int dim = 0; dim < 3; ++dim)
+        {
+          corner_sizes[dim] = corner_size(plan->dims[dim], corner_flags[dim]);
+          const int coarse_index = (corner_flags[dim] == 0) ? 0 : plan->dims[dim] - corner_sizes[dim];
+          const int fine_index = (corner_flags[dim] == 0) ? 0 : plan->fine_dims[dim] - corner_sizes[dim];
+
+          coarse_block += plan->strides[dim] * coarse_index;
+          fine_block += plan->fine_strides[dim] * fine_index;
+        }
+
+        block_copy_coarse_to_fine_interleaved(plan, corner_sizes[0], corner_sizes[1], corner_sizes[2], coarse_block, fine_block);
+      }
     }
   }
 }
