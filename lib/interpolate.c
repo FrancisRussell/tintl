@@ -68,6 +68,7 @@ static int max_dimension(const interpolate_plan plan);
 static int round_align(int value);
 
 static void pad_coarse_to_fine_interleaved(interpolate_plan plan, const fftw_complex *from, fftw_complex *to);
+static void halve_nyquist_components(interpolate_plan plan, fftw_complex *coarse);
 
 static inline void stage_in_split(interpolate_plan plan, int dim, double *rin, double *iin, fftw_complex *scratch)
 {
@@ -195,7 +196,7 @@ interpolate_plan plan_interpolate_3d(int n0, int n1, int n2, fftw_complex *in, f
 
   plan_common(plan, n0, n1, n2, flags);
   plan->interpolation = INTERLEAVED;
-  plan->strategy = PHASE_SHIFT;
+  plan->strategy = NAIVE;
 
   fftw_complex *const scratch = rs_alloc_complex(max_dimension(plan));
 
@@ -622,6 +623,7 @@ void interpolate_execute(const interpolate_plan plan, fftw_complex *in, fftw_com
     memcpy(input_copy, in, sizeof(fftw_complex) * block_size);
 
     fftw_execute_dft(plan->naive_forward_interleaved, input_copy, input_copy);
+    halve_nyquist_components(plan, input_copy);
     pad_coarse_to_fine_interleaved(plan, input_copy, out);
     fftw_execute_dft(plan->naive_backward_interleaved, out, out);
 
@@ -898,12 +900,35 @@ static void block_copy_coarse_to_fine_interleaved(interpolate_plan plan, int n0,
   }
 }
 
+void halve_nyquist_components(interpolate_plan plan, fftw_complex *coarse)
+{
+  const int n2 = plan->dims[2];
+  const int n1 = plan->dims[1];
+  const int n0 = plan->dims[0];
+
+  const int s2 = plan->strides[2];
+  const int s1 = plan->strides[1];
+
+  if (n2 % 2 == 0)
+    for(int i1 = 0; i1 < n1; ++i1)
+      for(int i0 = 0; i0 < n0; ++i0)
+        coarse[s2 * (n2 / 2) +  s1 * i1 + i0] *= 0.5;
+
+  if (n1 % 2 == 0)
+    for(int i2 = 0; i2 < n2; ++i2)
+      for(int i0 = 0; i0 < n0; ++i0)
+        coarse[s2 * i2 +  s1 * (n1 / 2) + i0] *= 0.5;
+
+  if (n0 % 2 == 0)
+    for(int i2 = 0; i2 < n2; ++i2)
+      for(int i1 = 0; i1 < n1; ++i1)
+        coarse[s2 * i2 +  s1 * i1 + (n0 / 2)] *= 0.5;
+}
+
 static int corner_size(const int n, const int negative)
 {
-  if ((n % 2) == 0)
-    return n/2 - (negative != 0);
-  else
-    return n/2 + (negative == 0);
+  // In the even case, this will duplicate the Nyquist in both blocks
+  return n / 2 + (negative == 0);
 }
 
 static void pad_coarse_to_fine_interleaved(interpolate_plan plan, const fftw_complex *from, fftw_complex *to)
