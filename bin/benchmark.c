@@ -1,12 +1,14 @@
 #include "timer.h"
 #include "allocation.h"
-#include "interpolate_interface.h"
-#include "phase_shift_interface.h"
+#include "interpolate.h"
+#include "phase_shift.h"
 #include <complex.h>
 #include <fftw3.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+
+typedef interpolate_plan (*plan_constructor_t)(int n0, int n1, int n2, int flags);
 
 static const double pi = 3.14159265358979323846;
 
@@ -15,7 +17,7 @@ static double test_function(double x, double y, double z)
   return sin(2 * x) + cos(3 * y) + sin(4 * z);
 }
 
-static void perform_timing(interpolate_interface interface,
+static void perform_timing(plan_constructor_t constructor,
   const int x_width, const int y_width, const int z_width)
 {
   time_point_t begin_resample, end_resample, begin_plan, end_plan;
@@ -24,7 +26,7 @@ static void perform_timing(interpolate_interface interface,
   fftw_complex *out = rs_alloc_complex(8 * x_width * y_width * z_width);
 
   time_point_save(&begin_plan);
-  void *const plan = interface.plan(x_width, y_width, z_width, in, out, 0);
+  interpolate_plan plan = constructor(x_width, y_width, z_width, 0);
   time_point_save(&end_plan);
 
 
@@ -45,7 +47,7 @@ static void perform_timing(interpolate_interface interface,
   }
 
   time_point_save(&begin_resample);
-  interface.execute(plan, in, out);
+  interpolate_execute_interleaved(plan, in, out);
   time_point_save(&end_resample);
 
   double abs_val = 0.0;
@@ -67,21 +69,20 @@ static void perform_timing(interpolate_interface interface,
     }
   }
 
-  printf("Interpolation variant: %s\n", interface.get_name());
+  printf("Interpolation variant: %s\n", interpolate_get_name(plan));
   printf("Problem size: %d x %d x %d\n", x_width, y_width, z_width);
-  interface.print_timings(plan);
+  interpolate_print_timings(plan);
   printf("Planning time: %f\n", time_point_delta(&begin_plan, &end_plan));
   printf("Execution time: %f\n", time_point_delta(&begin_resample, &end_resample));
   printf("Delta: %f\n", abs_val);
 
   rs_free(in);
   rs_free(out);
-  interface.destroy_plan(plan);
+  interpolate_destroy_plan(plan);
 }
 
 int main(int argc, char **argv)
 {
-  interpolate_interface phase_shift_interface = get_phase_shift_interpolate();
-  perform_timing(phase_shift_interface, 75, 75, 75);
+  perform_timing(interpolate_plan_3d_phase_shift_interleaved, 75, 75, 75);
   return EXIT_SUCCESS;
 }
