@@ -74,6 +74,12 @@ static interpolate_plan allocate_plan(void)
   return holder;
 }
 
+static int corner_size(const int n, const int negative)
+{
+  // In the even case, this will duplicate the Nyquist in both blocks
+  return n / 2 + (negative == 0);
+}
+
 static void plan_common(pa_plan plan, int n0, int n1, int n2, int flags)
 {
   plan->dims[0] = n2;
@@ -90,30 +96,9 @@ static void plan_common(pa_plan plan, int n0, int n1, int n2, int flags)
   plan->fine_strides[0] = 1;
   plan->fine_strides[1] = n2 * 2;
   plan->fine_strides[2] = n2 * n1 * 4;
-}
-
-static int corner_size(const int n, const int negative)
-{
-  // In the even case, this will duplicate the Nyquist in both blocks
-  return n / 2 + (negative == 0);
-}
-
-interpolate_plan interpolate_plan_3d_padding_aware_interleaved(int n0, int n1, int n2, int flags)
-{
-  interpolate_plan wrapper = allocate_plan();
-  pa_plan plan = (pa_plan) wrapper->detail;
-
-  flags |= FFTW_MEASURE;
-  plan_common(plan, n0, n1, n2, flags);
-  plan->interpolation = INTERLEAVED;
 
   const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
-
-  fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
   fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
-
-  int rev_dims[] = { plan->dims[2], plan->dims[1], plan->dims[0] };
-  plan->forward = fftw_plan_dft(3, rev_dims, scratch_coarse, scratch_coarse, FFTW_FORWARD, flags);
 
   // Interpolation in direction 2, iteration in direction 0, positive frequencies
   plan->n2_backward[0] = fftw_plan_many_dft(1, &plan->fine_dims[2], corner_size(plan->dims[0], 0),
@@ -150,15 +135,58 @@ interpolate_plan interpolate_plan_3d_padding_aware_interleaved(int n0, int n1, i
       FFTW_BACKWARD, flags);
   assert(plan->n0_backward != NULL);
 
-  rs_free(scratch_coarse);
   rs_free(scratch_fine);
+}
 
+interpolate_plan interpolate_plan_3d_padding_aware_interleaved(int n0, int n1, int n2, int flags)
+{
+  interpolate_plan wrapper = allocate_plan();
+  pa_plan plan = (pa_plan) wrapper->detail;
+
+  flags |= FFTW_MEASURE;
+  plan_common(plan, n0, n1, n2, flags);
+  plan->interpolation = INTERLEAVED;
+
+  const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
+
+  fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
+
+  int rev_dims[] = { plan->dims[2], plan->dims[1], plan->dims[0] };
+  plan->forward = fftw_plan_dft(3, rev_dims, scratch_coarse, scratch_coarse, FFTW_FORWARD, flags);
+
+  rs_free(scratch_coarse);
   return wrapper;
 }
 
 interpolate_plan interpolate_plan_3d_padding_aware_split(int n0, int n1, int n2, int flags)
 {
-  return NULL;
+  interpolate_plan wrapper = allocate_plan();
+  pa_plan plan = (pa_plan) wrapper->detail;
+
+  flags |= FFTW_MEASURE;
+  plan_common(plan, n0, n1, n2, flags);
+  plan->interpolation = INTERLEAVED;
+
+  const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
+
+  double *const scratch_coarse_real = rs_alloc_real(block_size);
+  double *const scratch_coarse_imag = rs_alloc_real(block_size);
+  fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
+
+  fftw_iodim forward_dims[3];
+  for(int dim = 0; dim < 3; ++dim)
+  {
+    forward_dims[2 - dim].n = plan->dims[dim];
+    forward_dims[2 - dim].is = plan->strides[dim];
+    forward_dims[2 - dim].os = plan->strides[dim] * 2;
+  }
+
+  plan->forward = fftw_plan_guru_split_dft(3, forward_dims, 0, NULL,
+      scratch_coarse_real, scratch_coarse_imag,
+      (double*) scratch_fine, ((double*) scratch_fine)+1,
+      flags);
+
+  return wrapper;
 }
 
 interpolate_plan plan_interpolate_3d_padding_aware_split_product(int n0, int n1, int n2, int flags)
@@ -183,6 +211,62 @@ static void pa_interpolate_destroy_detail(void *detail)
   free(plan);
 }
 
+static void backward_transform(const pa_plan plan, fftw_complex *data)
+{
+  int corner_sizes[3][2];
+
+  for(int negative = 0; negative < 2; ++negative)
+    for(int dim = 0; dim < 3; ++dim)
+      corner_sizes[dim][negative] = corner_size(plan->dims[dim], negative);
+
+  // Interpolation in direction 2
+  for(int y = 0; y < corner_sizes[1][0]; ++y)
+  {
+    fftw_complex *positive_start = data + y * plan->fine_strides[1];
+    fftw_execute_dft(plan->n2_backward[0], positive_start, positive_start);
+
+    fftw_complex *negative_start = data + (y + 1) * plan->fine_strides[1] - corner_sizes[0][1];
+    fftw_execute_dft(plan->n2_backward[1], negative_start, negative_start);
+  }
+
+  for(int y = plan->fine_dims[1] - corner_sizes[1][1]; y < plan->fine_dims[1]; ++y)
+  {
+    fftw_complex *positive_start = data + y * plan->fine_strides[1];
+    fftw_execute_dft(plan->n2_backward[0], positive_start, positive_start);
+
+    fftw_complex *negative_start = data + (y + 1) * plan->fine_strides[1] - corner_sizes[0][1];
+    fftw_execute_dft(plan->n2_backward[1], negative_start, negative_start);
+  }
+
+  time_point_save(&plan->after_backward[2]);
+
+  // Interpolation in direction 1
+  for(int z = 0; z < plan->fine_dims[2]; ++z)
+  {
+    fftw_complex *positive_start = data + z * plan->fine_strides[2];
+    fftw_execute_dft(plan->n1_backward[0], positive_start, positive_start);
+
+    fftw_complex *negative_start = data + z * plan->fine_strides[2] + plan->fine_strides[1] - corner_sizes[0][1];
+    fftw_execute_dft(plan->n1_backward[1], negative_start, negative_start);
+  }
+
+  time_point_save(&plan->after_backward[1]);
+
+  // Interpolation in direction 0
+  fftw_execute_dft(plan->n0_backward, data, data);
+
+  time_point_save(&plan->after_backward[0]);
+}
+
+static void split_interleaved(const int size, fftw_complex *const in, double *rout, double *iout)
+{
+  for(int i=0; i<size; ++i)
+  {
+    rout[i] = creal(in[i]);
+    iout[i] = cimag(in[i]);
+  }
+}
+
 static void pa_interpolate_execute_interleaved(const void *detail, fftw_complex *in, fftw_complex *out)
 {
   pa_plan plan = (pa_plan) detail;
@@ -199,51 +283,7 @@ static void pa_interpolate_execute_interleaved(const void *detail, fftw_complex 
   halve_nyquist_components(plan, input_copy);
   pad_coarse_to_fine_interleaved(plan, input_copy, out);
   time_point_save(&plan->after_padding);
-
-  int corner_sizes[3][2];
-
-  for(int negative = 0; negative < 2; ++negative)
-    for(int dim = 0; dim < 3; ++dim)
-      corner_sizes[dim][negative] = corner_size(plan->dims[dim], negative);
-
-  // Interpolation in direction 2
-  for(int y = 0; y < corner_sizes[1][0]; ++y)
-  {
-    fftw_complex *positive_start = out + y * plan->fine_strides[1];
-    fftw_execute_dft(plan->n2_backward[0], positive_start, positive_start);
-
-    fftw_complex *negative_start = out + (y + 1) * plan->fine_strides[1] - corner_sizes[0][1];
-    fftw_execute_dft(plan->n2_backward[1], negative_start, negative_start);
-  }
-
-  for(int y = plan->fine_dims[1] - corner_sizes[1][1]; y < plan->fine_dims[1]; ++y)
-  {
-    fftw_complex *positive_start = out + y * plan->fine_strides[1];
-    fftw_execute_dft(plan->n2_backward[0], positive_start, positive_start);
-
-    fftw_complex *negative_start = out + (y + 1) * plan->fine_strides[1] - corner_sizes[0][1];
-    fftw_execute_dft(plan->n2_backward[1], negative_start, negative_start);
-  }
-
-  time_point_save(&plan->after_backward[2]);
-
-  // Interpolation in direction 1
-  for(int z = 0; z < plan->fine_dims[2]; ++z)
-  {
-    fftw_complex *positive_start = out + z * plan->fine_strides[2];
-    fftw_execute_dft(plan->n1_backward[0], positive_start, positive_start);
-
-    fftw_complex *negative_start = out + z * plan->fine_strides[2] + plan->fine_strides[1] - corner_sizes[0][1];
-    fftw_execute_dft(plan->n1_backward[1], negative_start, negative_start);
-  }
-
-  time_point_save(&plan->after_backward[1]);
-
-  // Interpolation in direction 0
-  fftw_execute_dft(plan->n0_backward, out, out);
-
-  time_point_save(&plan->after_backward[0]);
-
+  backward_transform(plan, out);
   rs_free(input_copy);
 }
 
@@ -253,12 +293,30 @@ static void pa_interpolate_execute_split(const void *detail, double *rin, double
   assert(SPLIT == plan->interpolation || SPLIT_PRODUCT == plan->interpolation);
 
   const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
+  fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
+  fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
+
+  time_point_save(&plan->before_forward);
+  fftw_execute_split_dft(plan->forward, rin, iin, (double*) scratch_coarse, ((double*) scratch_coarse) + 1);
+  time_point_save(&plan->after_forward);
+  halve_nyquist_components(plan, scratch_coarse);
+  pad_coarse_to_fine_interleaved(plan, scratch_coarse, scratch_fine);
+  time_point_save(&plan->after_padding);
+  backward_transform(plan, scratch_fine);
+  split_interleaved(8 * block_size, scratch_fine, rout, iout);
+  rs_free(scratch_coarse);
+  rs_free(scratch_fine);
 }
 
 void pa_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out)
 {
   pa_plan plan = (pa_plan) detail;
   assert(SPLIT_PRODUCT == plan->interpolation);
+
+  const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
+  double *const scratch_fine = rs_alloc_real(8 * block_size);
+  pa_interpolate_execute_split(detail, rin, iin, out, scratch_fine);
+  pointwise_multiply_real(8 * block_size, out, scratch_fine);
 }
 
 void pa_interpolate_print_timings(const void *detail)
