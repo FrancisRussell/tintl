@@ -21,10 +21,8 @@ static const double pi = 3.14159265358979323846;
 
 typedef struct
 {
+  interpolate_properties_t props;
   int stage[2][3];
-  int interpolation;
-  int dims[3];
-  int strides[3];
 
   fftw_plan dfts[3];
   fftw_plan dfts_staged[3];
@@ -53,7 +51,7 @@ static void phase_shift_interpolate_execute_split_product(const void *detail, do
 static void phase_shift_interpolate_print_timings(const void *detail);
 static void phase_shift_interpolate_destroy_detail(void *detail);
 
-static void plan_common(phase_shift_plan plan, int n0, int n1, int n2, int flags);
+static void plan_common(phase_shift_plan plan, interpolation_t type, int n0, int n1, int n2, int flags);
 
 static void expand_dim0(phase_shift_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch);
 static void expand_dim1(phase_shift_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch);
@@ -102,14 +100,14 @@ static interpolate_plan allocate_plan(void)
 
 static inline void stage_in_split(phase_shift_plan plan, int dim, double *rin, double *iin, fftw_complex *scratch)
 {
-  gather_split(plan->dims[dim], plan->strides[dim], rin, iin, scratch);
+  gather_split(plan->props.dims[dim], plan->props.strides[dim], rin, iin, scratch);
   fftw_execute_dft(plan->dfts_staged[dim], scratch, scratch);
 }
 
 static inline void stage_out_split(phase_shift_plan plan, int dim, double *rout, double *iout, fftw_complex *scratch)
 {
   fftw_execute_dft(plan->idfts_staged[dim], scratch, scratch);
-  scatter_split(plan->dims[dim], plan->strides[dim], rout, iout, scratch);
+  scatter_split(plan->props.dims[dim], plan->props.strides[dim], rout, iout, scratch);
 }
 
 static inline void transform_in_split(phase_shift_plan plan, int dim, double *rin, double *iin, fftw_complex *scratch)
@@ -124,14 +122,14 @@ static inline void transform_out_split(phase_shift_plan plan, int dim, double *r
 
 static inline void stage_in_interleaved(phase_shift_plan plan, int dim, fftw_complex *in, fftw_complex *scratch)
 {
-  gather_complex(plan->dims[dim], plan->strides[dim], in, scratch);
+  gather_complex(plan->props.dims[dim], plan->props.strides[dim], in, scratch);
   fftw_execute_dft(plan->dfts_staged[dim], scratch, scratch);
 }
 
 static inline void stage_out_interleaved(phase_shift_plan plan, int dim, fftw_complex *out, fftw_complex *scratch)
 {
   fftw_execute_dft(plan->idfts_staged[dim], scratch, scratch);
-  scatter_complex(plan->dims[dim], plan->strides[dim], out, scratch);
+  scatter_complex(plan->props.dims[dim], plan->props.strides[dim], out, scratch);
 }
 
 static inline void transform_in_interleaved(phase_shift_plan plan, int dim, fftw_complex *in, fftw_complex *scratch)
@@ -154,33 +152,26 @@ static int max_dimension(const phase_shift_plan plan)
 {
   int max_dim = 0;
   for(int dim=0; dim < 3; ++dim)
-    max_dim = (max_dim < plan->dims[dim] ? plan->dims[dim] : max_dim);
+    max_dim = (max_dim < plan->props.dims[dim] ? plan->props.dims[dim] : max_dim);
   return max_dim;
 }
 
-static void plan_common(phase_shift_plan plan, int n0, int n1, int n2, int flags)
+static void plan_common(phase_shift_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)
 {
   flags |= FFTW_MEASURE;
-
-  plan->dims[0] = n2;
-  plan->dims[1] = n1;
-  plan->dims[2] = n0;
-
-  plan->strides[0] = 1;
-  plan->strides[1] = n2;
-  plan->strides[2] = n2 * n1;
+  populate_properties(&plan->props, type, n0, n1, n2);
 
   for(int dim = 0; dim < 3; ++dim)
   {
-    plan->rotations[dim] = rs_alloc_complex(plan->dims[dim]);
-    build_rotation(plan->dims[dim], plan->rotations[dim]);
+    plan->rotations[dim] = rs_alloc_complex(plan->props.dims[dim]);
+    build_rotation(plan->props.dims[dim], plan->rotations[dim]);
   }
 
   fftw_complex *const scratch = rs_alloc_complex(max_dimension(plan));
 
   for(int dim=0; dim < 3; ++dim)
   {
-    plan->dfts_staged[dim] = fftw_plan_many_dft(1, &plan->dims[dim], 1,
+    plan->dfts_staged[dim] = fftw_plan_many_dft(1, &plan->props.dims[dim], 1,
       scratch, NULL, 1, 0,
       scratch, NULL, 1, 0,
       FFTW_FORWARD, flags);
@@ -190,7 +181,7 @@ static void plan_common(phase_shift_plan plan, int n0, int n1, int n2, int flags
 
   for(int dim=0; dim < 3; ++dim)
   {
-    plan->idfts_staged[dim] = fftw_plan_many_dft(1, &plan->dims[dim], 1,
+    plan->idfts_staged[dim] = fftw_plan_many_dft(1, &plan->props.dims[dim], 1,
       scratch, NULL, 1, 0,
       scratch, NULL, 1, 0,
       FFTW_BACKWARD, flags);
@@ -207,10 +198,9 @@ interpolate_plan interpolate_plan_3d_phase_shift_interleaved(int n0, int n1, int
   phase_shift_plan plan = (phase_shift_plan) wrapper->detail;
 
   flags |= FFTW_MEASURE;
-  plan_common(plan, n0, n1, n2, flags);
-  plan->interpolation = INTERLEAVED;
+  plan_common(plan, INTERLEAVED, n0, n1, n2, flags);
 
-  const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
+  const int block_size = num_elements(&plan->props);
   fftw_complex *const data_in = rs_alloc_complex(block_size);
   fftw_complex *const data_out = rs_alloc_complex(block_size);
   fftw_complex *const scratch = rs_alloc_complex(max_dimension(plan));
@@ -220,8 +210,8 @@ interpolate_plan interpolate_plan_3d_phase_shift_interleaved(int n0, int n1, int
 
   for(int dim=0; dim < 3; ++dim)
   {
-    plan->dfts[dim] = fftw_plan_many_dft(1, &plan->dims[dim], 1,
-      data_in, NULL, plan->strides[dim], 0,
+    plan->dfts[dim] = fftw_plan_many_dft(1, &plan->props.dims[dim], 1,
+      data_in, NULL, plan->props.strides[dim], 0,
       scratch, NULL, 1, 0,
       FFTW_FORWARD, flags);
 
@@ -230,9 +220,9 @@ interpolate_plan interpolate_plan_3d_phase_shift_interleaved(int n0, int n1, int
 
   for(int dim=0; dim < 3; ++dim)
   {
-    plan->idfts[dim] = fftw_plan_many_dft(1, &plan->dims[dim], 1,
+    plan->idfts[dim] = fftw_plan_many_dft(1, &plan->props.dims[dim], 1,
       scratch, NULL, 1, 0,
-      data_out, NULL, plan->strides[dim], 0,
+      data_out, NULL, plan->props.strides[dim], 0,
       FFTW_BACKWARD, flags | FFTW_DESTROY_INPUT);
 
     assert(plan->idfts[dim] != NULL);
@@ -282,10 +272,9 @@ interpolate_plan interpolate_plan_3d_phase_shift_split(int n0, int n1, int n2, i
   phase_shift_plan plan = (phase_shift_plan) wrapper->detail;
 
   flags |= FFTW_MEASURE;
-  plan_common(plan, n0, n1, n2, flags);
-  plan->interpolation = SPLIT;
+  plan_common(plan, SPLIT, n0, n1, n2, flags);
 
-  const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
+  const int block_size = num_elements(&plan->props);
   double *const real_scratch = rs_alloc_real(block_size);
   double *const imag_scratch = rs_alloc_real(block_size);
   fftw_complex *const scratch = rs_alloc_complex(max_dimension(plan));
@@ -293,8 +282,8 @@ interpolate_plan interpolate_plan_3d_phase_shift_split(int n0, int n1, int n2, i
   for(int dim=0; dim < 3; ++dim)
   {
     fftw_iodim dims;
-    dims.n = plan->dims[dim];
-    dims.is = plan->strides[dim];
+    dims.n = plan->props.dims[dim];
+    dims.is = plan->props.strides[dim];
     dims.os = 2;
 
     plan->dfts[dim] = fftw_plan_guru_split_dft(1, &dims, 0, NULL,
@@ -308,9 +297,9 @@ interpolate_plan interpolate_plan_3d_phase_shift_split(int n0, int n1, int n2, i
   for(int dim=0; dim < 3; ++dim)
   {
     fftw_iodim dims;
-    dims.n = plan->dims[dim];
+    dims.n = plan->props.dims[dim];
     dims.is = 2;
-    dims.os = plan->strides[dim];
+    dims.os = plan->props.strides[dim];
 
     plan->idfts[dim] = fftw_plan_guru_split_dft(1, &dims, 0, NULL,
       ((double*) scratch) + 1, ((double*) scratch),
@@ -369,7 +358,7 @@ interpolate_plan interpolate_plan_3d_phase_shift_split(int n0, int n1, int n2, i
 interpolate_plan plan_interpolate_3d_split_product(int n0, int n1, int n2, int flags)
 {
   interpolate_plan wrapper = interpolate_plan_3d_phase_shift_split(n0, n1, n2, flags);
-  ((phase_shift_plan) wrapper->detail)->interpolation = SPLIT_PRODUCT;
+  ((phase_shift_plan) wrapper->detail)->props.type = SPLIT_PRODUCT;
   return wrapper;
 }
 
@@ -511,30 +500,30 @@ static void scatter_split(int size, int stride, double *rout, double *iout, cons
 
 static void gather_blocks_complex(phase_shift_plan plan, fftw_complex *blocks[8], fftw_complex *out)
 {
-  for(int i2=0; i2 < plan->dims[2] * 2; ++i2)
+  for(int i2=0; i2 < plan->props.dims[2] * 2; ++i2)
   {
-    for(int i1=0; i1 < plan->dims[1] * 2; ++i1)
+    for(int i1=0; i1 < plan->props.dims[1] * 2; ++i1)
     {
-      const int in_offset = (i2/2) * plan->strides[2] + (i1/2) * plan->strides[1];
+      const int in_offset = (i2/2) * plan->props.strides[2] + (i1/2) * plan->props.strides[1];
       const fftw_complex *even = &blocks[(i2 % 2) + (i1 % 2) * 2][in_offset];
       const fftw_complex *odd = &blocks[(i2 % 2) + (i1 % 2) * 2 + 4][in_offset];
-      fftw_complex *row_out = &out[i2 * plan->strides[2] * 4 + i1 * plan->strides[1] * 2];
-      interleave_complex(plan->dims[0], row_out, even, odd);
+      fftw_complex *row_out = &out[i2 * plan->props.strides[2] * 4 + i1 * plan->props.strides[1] * 2];
+      interleave_complex(plan->props.dims[0], row_out, even, odd);
     }
   }
 }
 
 static void gather_blocks_real(phase_shift_plan plan, double *blocks[8], double *out)
 {
-  for(int i2=0; i2 < plan->dims[2] * 2; ++i2)
+  for(int i2=0; i2 < plan->props.dims[2] * 2; ++i2)
   {
-    for(int i1=0; i1 < plan->dims[1] * 2; ++i1)
+    for(int i1=0; i1 < plan->props.dims[1] * 2; ++i1)
     {
-      const int in_offset = (i2/2) * plan->strides[2] + (i1/2) * plan->strides[1];
+      const int in_offset = (i2/2) * plan->props.strides[2] + (i1/2) * plan->props.strides[1];
       const double *even = &blocks[(i2 % 2) + (i1 % 2) * 2][in_offset];
       const double *odd = &blocks[(i2 % 2) + (i1 % 2) * 2 + 4][in_offset];
-      double *row_out = &out[i2 * plan->strides[2] * 4 + i1 * plan->strides[1] * 2];
-      interleave_real(plan->dims[0], row_out, even, odd);
+      double *row_out = &out[i2 * plan->props.strides[2] * 4 + i1 * plan->props.strides[1] * 2];
+      interleave_real(plan->props.dims[0], row_out, even, odd);
     }
   }
 }
@@ -542,9 +531,9 @@ static void gather_blocks_real(phase_shift_plan plan, double *blocks[8], double 
 static void phase_shift_interpolate_execute_interleaved(const void *detail, fftw_complex *in, fftw_complex *out)
 {
   phase_shift_plan plan = (phase_shift_plan) detail;
-  assert(INTERLEAVED == plan->interpolation);
+  assert(INTERLEAVED == plan->props.type);
 
-  const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
+  const int block_size = num_elements(&plan->props);
 
   fftw_complex *const block_data = rs_alloc_complex(7 * block_size);
   fftw_complex *blocks[8];
@@ -597,9 +586,9 @@ static void interpolate_split_common(const phase_shift_plan plan, double *blocks
 static void phase_shift_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout)
 {
   phase_shift_plan plan = (phase_shift_plan) detail;
-  assert(SPLIT == plan->interpolation);
+  assert(SPLIT == plan->props.type);
 
-  const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
+  const int block_size = num_elements(&plan->props);
   const int rounded_block_size = round_align(block_size);
   double *const block_data = rs_alloc_real(2 * 7 * rounded_block_size);
   double *blocks[8][2];
@@ -635,9 +624,9 @@ static void phase_shift_interpolate_execute_split(const void *detail, double *ri
 void phase_shift_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out)
 {
   phase_shift_plan plan = (phase_shift_plan) detail;
-  assert(SPLIT_PRODUCT == plan->interpolation);
+  assert(SPLIT_PRODUCT == plan->props.type);
 
-  const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
+  const int block_size = num_elements(&plan->props);
   const int rounded_block_size = round_align(block_size);
   double *const block_data = rs_alloc_real(2 * 7 * rounded_block_size);
   double *blocks[8][2];
@@ -680,18 +669,18 @@ void phase_shift_interpolate_print_timings(const void *detail)
 static void expand_dim0(phase_shift_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch)
 {
   static const int dim = 0;
-  for(int i2=0; i2 < plan->dims[2]; ++i2)
+  for(int i2=0; i2 < plan->props.dims[2]; ++i2)
   {
-    for(int i1=0; i1 < plan->dims[1]; ++i1)
+    for(int i1=0; i1 < plan->props.dims[1]; ++i1)
     {
-      const size_t offset = i1*plan->strides[1] + i2*plan->strides[2];
+      const size_t offset = i1*plan->props.strides[1] + i2*plan->props.strides[2];
 
       if (plan->stage[0][dim])
         stage_in_interleaved(plan, dim, in + offset, scratch);
       else
         transform_in_interleaved(plan, dim, in + offset, scratch);
 
-        pointwise_multiply_complex(plan->dims[dim], scratch, plan->rotations[dim]);
+        pointwise_multiply_complex(plan->props.dims[dim], scratch, plan->rotations[dim]);
 
       if (plan->stage[1][dim])
         stage_out_interleaved(plan, dim, out + offset, scratch);
@@ -704,18 +693,18 @@ static void expand_dim0(phase_shift_plan plan, fftw_complex *in, fftw_complex *o
 static void expand_dim0_split(phase_shift_plan plan, double *in[2], double *out[2], fftw_complex *scratch)
 {
   static const int dim = 0;
-  for(int i2=0; i2 < plan->dims[2]; ++i2)
+  for(int i2=0; i2 < plan->props.dims[2]; ++i2)
   {
-    for(int i1=0; i1 < plan->dims[1]; ++i1)
+    for(int i1=0; i1 < plan->props.dims[1]; ++i1)
     {
-      const size_t offset = i1*plan->strides[1] + i2*plan->strides[2];
+      const size_t offset = i1*plan->props.strides[1] + i2*plan->props.strides[2];
 
       if (plan->stage[0][dim])
         stage_in_split(plan, dim, in[0] + offset, in[1] + offset, scratch);
       else
         transform_in_split(plan, dim, in[0] + offset, in[1] + offset, scratch);
 
-        pointwise_multiply_complex(plan->dims[dim], scratch, plan->rotations[dim]);
+        pointwise_multiply_complex(plan->props.dims[dim], scratch, plan->rotations[dim]);
 
       if (plan->stage[1][dim])
         stage_out_split(plan, dim, out[0] + offset, out[1] + offset, scratch);
@@ -729,18 +718,18 @@ static void expand_dim0_split(phase_shift_plan plan, double *in[2], double *out[
 static void expand_dim1(phase_shift_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch)
 {
   static const int dim = 1;
-  for(int i2=0; i2 < plan->dims[2]; ++i2)
+  for(int i2=0; i2 < plan->props.dims[2]; ++i2)
   {
-    for(int i0=0; i0 < plan->dims[0]; ++i0)
+    for(int i0=0; i0 < plan->props.dims[0]; ++i0)
     {
-      const size_t offset = i0 + i2*plan->strides[2];
+      const size_t offset = i0 + i2*plan->props.strides[2];
 
       if (plan->stage[0][dim])
         stage_in_interleaved(plan, dim, in + offset, scratch);
       else
         transform_in_interleaved(plan, dim, in + offset, scratch);
 
-        pointwise_multiply_complex(plan->dims[dim], scratch, plan->rotations[dim]);
+        pointwise_multiply_complex(plan->props.dims[dim], scratch, plan->rotations[dim]);
 
       if (plan->stage[1][dim])
         stage_out_interleaved(plan, dim, out + offset, scratch);
@@ -753,18 +742,18 @@ static void expand_dim1(phase_shift_plan plan, fftw_complex *in, fftw_complex *o
 static void expand_dim1_split(phase_shift_plan plan, double *in[2], double *out[2], fftw_complex *scratch)
 {
   static const int dim = 1;
-  for(int i2=0; i2 < plan->dims[2]; ++i2)
+  for(int i2=0; i2 < plan->props.dims[2]; ++i2)
   {
-    for(int i0=0; i0 < plan->dims[0]; ++i0)
+    for(int i0=0; i0 < plan->props.dims[0]; ++i0)
     {
-      const size_t offset = i0 + i2*plan->strides[2];
+      const size_t offset = i0 + i2*plan->props.strides[2];
 
       if (plan->stage[0][dim])
         stage_in_split(plan, dim, in[0] + offset, in[1] + offset, scratch);
       else
         transform_in_split(plan, dim, in[0] + offset, in[1] + offset, scratch);
 
-        pointwise_multiply_complex(plan->dims[dim], scratch, plan->rotations[dim]);
+        pointwise_multiply_complex(plan->props.dims[dim], scratch, plan->rotations[dim]);
 
       if (plan->stage[1][dim])
         stage_out_split(plan, dim, out[0] + offset, out[1] + offset, scratch);
@@ -777,18 +766,18 @@ static void expand_dim1_split(phase_shift_plan plan, double *in[2], double *out[
 static void expand_dim2(phase_shift_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch)
 {
   static const int dim = 2;
-  for(int i1=0; i1 < plan->dims[1]; ++i1)
+  for(int i1=0; i1 < plan->props.dims[1]; ++i1)
   {
-    for(int i0=0; i0 < plan->dims[0]; ++i0)
+    for(int i0=0; i0 < plan->props.dims[0]; ++i0)
     {
-      const size_t offset = i1*plan->strides[1] + i0;
+      const size_t offset = i1*plan->props.strides[1] + i0;
 
       if (plan->stage[0][dim])
         stage_in_interleaved(plan, dim, in + offset, scratch);
       else
         transform_in_interleaved(plan, dim, in + offset, scratch);
 
-        pointwise_multiply_complex(plan->dims[dim], scratch, plan->rotations[dim]);
+        pointwise_multiply_complex(plan->props.dims[dim], scratch, plan->rotations[dim]);
 
       if (plan->stage[1][dim])
         stage_out_interleaved(plan, dim, out + offset, scratch);
@@ -801,18 +790,18 @@ static void expand_dim2(phase_shift_plan plan, fftw_complex *in, fftw_complex *o
 static void expand_dim2_split(phase_shift_plan plan, double *in[2], double *out[2], fftw_complex *scratch)
 {
   static const int dim = 2;
-  for(int i1=0; i1 < plan->dims[1]; ++i1)
+  for(int i1=0; i1 < plan->props.dims[1]; ++i1)
   {
-    for(int i0=0; i0 < plan->dims[0]; ++i0)
+    for(int i0=0; i0 < plan->props.dims[0]; ++i0)
     {
-      const size_t offset = i1*plan->strides[1] + i0;
+      const size_t offset = i1*plan->props.strides[1] + i0;
 
       if (plan->stage[0][dim])
         stage_in_split(plan, dim, in[0] + offset, in[1] + offset, scratch);
       else
         transform_in_split(plan, dim, in[0] + offset, in[1] + offset, scratch);
 
-        pointwise_multiply_complex(plan->dims[dim], scratch, plan->rotations[dim]);
+        pointwise_multiply_complex(plan->props.dims[dim], scratch, plan->rotations[dim]);
 
       if (plan->stage[1][dim])
         stage_out_split(plan, dim, out[0] + offset, out[1] + offset, scratch);

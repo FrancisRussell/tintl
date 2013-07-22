@@ -30,7 +30,7 @@ lib/padding_aware.o: include/interpolate.h include/padding_aware.h include/timer
   include/allocation.h lib/common.h include/fftw_cycle.h
 
 lib/phase_shift.c: include/interpolate.h include/phase_shift.h include/timer.h \
-  include/allocation.h include/fftw_cycle.h
+  include/allocation.h include/fftw_cycle.h lib/common.h
 
 lib/timer.o: include/timer.h
 

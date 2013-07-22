@@ -14,11 +14,7 @@
 
 typedef struct
 {
-  int interpolation;
-  int dims[3];
-  int strides[3];
-  int fine_dims[3];
-  int fine_strides[3];
+  interpolate_properties_t props;
 
   fftw_plan naive_forward;
   fftw_plan naive_backward;
@@ -41,7 +37,7 @@ static void naive_interpolate_execute_split_product(const void *detail, double *
 static void naive_interpolate_print_timings(const void *detail);
 static void naive_interpolate_destroy_detail(void *detail);
 
-static void plan_common(naive_plan plan, int n0, int n1, int n2, int flags);
+static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, int n2, int flags);
 
 static void pad_coarse_to_fine_interleaved(naive_plan plan, const fftw_complex *from, fftw_complex *to);
 static void halve_nyquist_components(naive_plan plan, fftw_complex *coarse);
@@ -65,22 +61,9 @@ static interpolate_plan allocate_plan(void)
   return holder;
 }
 
-static void plan_common(naive_plan plan, int n0, int n1, int n2, int flags)
+static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)
 {
-  plan->dims[0] = n2;
-  plan->dims[1] = n1;
-  plan->dims[2] = n0;
-
-  for(int dim = 0; dim < 3; ++dim)
-    plan->fine_dims[dim] = plan->dims[dim] * 2;
-
-  plan->strides[0] = 1;
-  plan->strides[1] = n2;
-  plan->strides[2] = n2 * n1;
-
-  plan->fine_strides[0] = 1;
-  plan->fine_strides[1] = n2 * 2;
-  plan->fine_strides[2] = n2 * n1 * 4;
+  populate_properties(&plan->props, type, n0, n1, n2);
 }
 
 interpolate_plan interpolate_plan_3d_naive_interleaved(int n0, int n1, int n2, int flags)
@@ -89,16 +72,15 @@ interpolate_plan interpolate_plan_3d_naive_interleaved(int n0, int n1, int n2, i
   naive_plan plan = (naive_plan) wrapper->detail;
 
   flags |= FFTW_MEASURE;
-  plan_common(plan, n0, n1, n2, flags);
-  plan->interpolation = INTERLEAVED;
+  plan_common(plan, INTERLEAVED, n0, n1, n2, flags);
 
-  const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
+  const int block_size = plan->props.dims[0] * plan->props.dims[1] * plan->props.dims[2];
 
   fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
   fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
 
-  int rev_dims[] = { plan->dims[2], plan->dims[1], plan->dims[0] };
-  int rev_fine_dims[] = { plan->fine_dims[2], plan->fine_dims[1], plan->fine_dims[0] };
+  int rev_dims[] = { plan->props.dims[2], plan->props.dims[1], plan->props.dims[0] };
+  int rev_fine_dims[] = { plan->props.fine_dims[2], plan->props.fine_dims[1], plan->props.fine_dims[0] };
 
   plan->naive_forward = fftw_plan_dft(3, rev_dims, scratch_coarse, scratch_coarse, FFTW_FORWARD, flags);
   plan->naive_backward = fftw_plan_dft(3, rev_fine_dims, scratch_fine, scratch_fine, FFTW_BACKWARD, flags);
@@ -115,10 +97,9 @@ interpolate_plan interpolate_plan_3d_naive_split(int n0, int n1, int n2, int fla
   naive_plan plan = (naive_plan) wrapper->detail;
 
   flags |= FFTW_MEASURE;
-  plan_common(plan, n0, n1, n2, flags);
-  plan->interpolation = SPLIT;
+  plan_common(plan, SPLIT, n0, n1, n2, flags);
 
-  const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
+  const int block_size = num_elements(&plan->props);
 
   double *const scratch_coarse_real = rs_alloc_real(block_size);
   double *const scratch_coarse_imag = rs_alloc_real(block_size);
@@ -131,9 +112,9 @@ interpolate_plan interpolate_plan_3d_naive_split(int n0, int n1, int n2, int fla
   fftw_iodim forward_dims[3];
   for(int dim = 0; dim < 3; ++dim)
   {
-    forward_dims[2 - dim].n = plan->dims[dim];
-    forward_dims[2 - dim].is = plan->strides[dim];
-    forward_dims[2 - dim].os = plan->strides[dim] * 2;
+    forward_dims[2 - dim].n = plan->props.dims[dim];
+    forward_dims[2 - dim].is = plan->props.strides[dim];
+    forward_dims[2 - dim].os = plan->props.strides[dim] * 2;
   }
 
   plan->naive_forward = fftw_plan_guru_split_dft(3, forward_dims, 0, NULL,
@@ -146,9 +127,9 @@ interpolate_plan interpolate_plan_3d_naive_split(int n0, int n1, int n2, int fla
   fftw_iodim backward_dims[3];
   for(int dim = 0; dim < 3; ++dim)
   {
-    backward_dims[2 - dim].n = plan->dims[dim];
-    backward_dims[2 - dim].is = plan->fine_strides[dim] * 2;
-    backward_dims[2 - dim].os = plan->fine_strides[dim];
+    backward_dims[2 - dim].n = plan->props.dims[dim];
+    backward_dims[2 - dim].is = plan->props.fine_strides[dim] * 2;
+    backward_dims[2 - dim].os = plan->props.fine_strides[dim];
   }
 
   plan->naive_backward = fftw_plan_guru_split_dft(3, backward_dims, 0, NULL,
@@ -172,7 +153,7 @@ interpolate_plan interpolate_plan_3d_naive_split(int n0, int n1, int n2, int fla
 interpolate_plan plan_interpolate_3d_naive_split_product(int n0, int n1, int n2, int flags)
 {
   interpolate_plan wrapper = interpolate_plan_3d_naive_split(n0, n1, n2, flags);
-  ((naive_plan) wrapper->detail)->interpolation = SPLIT_PRODUCT;
+  ((naive_plan) wrapper->detail)->props.type = SPLIT_PRODUCT;
   return wrapper;
 }
 
@@ -189,9 +170,9 @@ static void naive_interpolate_destroy_detail(void *detail)
 static void naive_interpolate_execute_interleaved(const void *detail, fftw_complex *in, fftw_complex *out)
 {
   naive_plan plan = (naive_plan) detail;
-  assert(INTERLEAVED == plan->interpolation);
+  assert(INTERLEAVED == plan->props.type);
 
-  const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
+  const int block_size = num_elements(&plan->props);
 
   fftw_complex *const input_copy = rs_alloc_complex(block_size);
   memcpy(input_copy, in, sizeof(fftw_complex) * block_size);
@@ -211,9 +192,9 @@ static void naive_interpolate_execute_interleaved(const void *detail, fftw_compl
 static void naive_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout)
 {
   naive_plan plan = (naive_plan) detail;
-  assert(SPLIT == plan->interpolation || SPLIT_PRODUCT == plan->interpolation);
+  assert(SPLIT == plan->props.type || SPLIT_PRODUCT == plan->props.type);
 
-  const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
+  const int block_size = num_elements(&plan->props);
 
   fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
   fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
@@ -234,9 +215,9 @@ static void naive_interpolate_execute_split(const void *detail, double *rin, dou
 void naive_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out)
 {
   naive_plan plan = (naive_plan) detail;
-  assert(SPLIT_PRODUCT == plan->interpolation);
+  assert(SPLIT_PRODUCT == plan->props.type);
 
-  const int block_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
+  const int block_size = num_elements(&plan->props);
   double *const scratch_fine = rs_alloc_real(8 * block_size);
   naive_interpolate_execute_split(detail, rin, iin, out, scratch_fine);
   pointwise_multiply_real(8 * block_size, out, scratch_fine);
@@ -252,11 +233,11 @@ void naive_interpolate_print_timings(const void *detail)
 
 static void block_copy_coarse_to_fine_interleaved(naive_plan plan, int n0, int n1, int n2, const fftw_complex *from, fftw_complex *to)
 {
-  assert(n0 <= plan->dims[0]);
-  assert(n1 <= plan->dims[1]);
-  assert(n2 <= plan->dims[2]);
+  assert(n0 <= plan->props.dims[0]);
+  assert(n1 <= plan->props.dims[1]);
+  assert(n2 <= plan->props.dims[2]);
 
-  const double scale_factor = 1.0 / (plan->dims[0] * plan->dims[1] * plan->dims[2]);
+  const double scale_factor = 1.0 / num_elements(&plan->props);
 
   for(int i2=0; i2 < n2; ++i2)
   {
@@ -265,23 +246,23 @@ static void block_copy_coarse_to_fine_interleaved(naive_plan plan, int n0, int n
       for(int i0=0; i0 < n0; ++i0)
         to[i0] = from[i0] * scale_factor;
 
-      from += plan->strides[1];
-      to += plan->fine_strides[1];
+      from += plan->props.strides[1];
+      to += plan->props.fine_strides[1];
     }
 
-    from += plan->strides[2] - n1 * plan->strides[1];
-    to += plan->fine_strides[2] - n1 * plan->fine_strides[1];
+    from += plan->props.strides[2] - n1 * plan->props.strides[1];
+    to += plan->props.fine_strides[2] - n1 * plan->props.fine_strides[1];
   }
 }
 
 void halve_nyquist_components(naive_plan plan, fftw_complex *coarse)
 {
-  const int n2 = plan->dims[2];
-  const int n1 = plan->dims[1];
-  const int n0 = plan->dims[0];
+  const int n2 = plan->props.dims[2];
+  const int n1 = plan->props.dims[1];
+  const int n0 = plan->props.dims[0];
 
-  const int s2 = plan->strides[2];
-  const int s1 = plan->strides[1];
+  const int s2 = plan->props.strides[2];
+  const int s1 = plan->props.strides[1];
 
   if (n2 % 2 == 0)
     for(int i1 = 0; i1 < n1; ++i1)
@@ -301,7 +282,7 @@ void halve_nyquist_components(naive_plan plan, fftw_complex *coarse)
 
 static void pad_coarse_to_fine_interleaved(naive_plan plan, const fftw_complex *from, fftw_complex *to)
 {
-  const int coarse_size = plan->dims[0] * plan->dims[1] * plan->dims[2];
+  const int coarse_size = num_elements(&plan->props);
   memset(to, 0, 8 * coarse_size);
 
   int corner_flags[3];
@@ -318,12 +299,12 @@ static void pad_coarse_to_fine_interleaved(naive_plan plan, const fftw_complex *
 
         for(int dim = 0; dim < 3; ++dim)
         {
-          corner_sizes[dim] = corner_size(plan->dims[dim], corner_flags[dim]);
-          const int coarse_index = (corner_flags[dim] == 0) ? 0 : plan->dims[dim] - corner_sizes[dim];
-          const int fine_index = (corner_flags[dim] == 0) ? 0 : plan->fine_dims[dim] - corner_sizes[dim];
+          corner_sizes[dim] = corner_size(plan->props.dims[dim], corner_flags[dim]);
+          const int coarse_index = (corner_flags[dim] == 0) ? 0 : plan->props.dims[dim] - corner_sizes[dim];
+          const int fine_index = (corner_flags[dim] == 0) ? 0 : plan->props.fine_dims[dim] - corner_sizes[dim];
 
-          coarse_block += plan->strides[dim] * coarse_index;
-          fine_block += plan->fine_strides[dim] * fine_index;
+          coarse_block += plan->props.strides[dim] * coarse_index;
+          fine_block += plan->props.fine_strides[dim] * fine_index;
         }
 
         block_copy_coarse_to_fine_interleaved(plan, corner_sizes[0], corner_sizes[1], corner_sizes[2], coarse_block, fine_block);
