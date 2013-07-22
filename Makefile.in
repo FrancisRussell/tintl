@@ -10,10 +10,10 @@ FFLAGS = $(COMMON_FLAGS)
 default: lib/libresample.so bin/benchmark
 
 bin/benchmark.o: include/timer.h include/allocation.h include/interpolate.h \
-  include/phase_shift.h include/naive.h
+  include/phase_shift.h include/naive.h include/padding_aware.h
 
 lib/libresample.so: lib/allocation.o lib/interpolate.o lib/naive.o \
-  lib/phase_shift.o lib/timer.o
+  lib/padding_aware.o lib/phase_shift.o lib/timer.o
 	$(CC) -shared -fPIC $(FFTW_LDFLAGS) $^ -o $@ $(FFTW_LDLIBS)
 
 bin/%: bin/%.o lib/libresample.so
@@ -26,6 +26,9 @@ lib/interpolate.o: include/timer.h include/interpolate.h
 lib/naive.o: include/interpolate.h include/naive.h include/timer.h \
   include/allocation.h lib/common.h include/fftw_cycle.h
 
+lib/padding_aware.o: include/interpolate.h include/padding_aware.h include/timer.h \
+  include/allocation.h lib/common.h include/fftw_cycle.h
+
 lib/phase_shift.c: include/interpolate.h include/phase_shift.h include/timer.h \
   include/allocation.h include/fftw_cycle.h
 
@@ -33,6 +36,7 @@ lib/timer.o: include/timer.h
 
 clean: 
 	rm -f lib/libresample.so lib/allocation.o lib/interpolate.o lib/naive.o \
-	  lib/phase_shift.o lib/timer.o bin/benchmark.o bin/benchmark
+	  lib/padding_aware.o lib/phase_shift.o lib/timer.o bin/benchmark.o \
+	  bin/benchmark
 
 .PHONY: default clean
