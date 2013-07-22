@@ -2,6 +2,7 @@
 #include "allocation.h"
 #include "interpolate.h"
 #include "phase_shift.h"
+#include "naive.h"
 #include <complex.h>
 #include <fftw3.h>
 #include <stdlib.h>
@@ -83,6 +84,8 @@ static void perform_timing(plan_constructor_t constructor,
 
 int main(int argc, char **argv)
 {
+  perform_timing(interpolate_plan_3d_naive_interleaved, 75, 75, 75);
+  printf("\n");
   perform_timing(interpolate_plan_3d_phase_shift_interleaved, 75, 75, 75);
   return EXIT_SUCCESS;
 }
