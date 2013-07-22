@@ -19,13 +19,6 @@
 static const int TIMING_ITERATIONS = 50;
 static const double pi = 3.14159265358979323846;
 
-typedef enum
-{
-  INTERLEAVED,
-  SPLIT,
-  SPLIT_PRODUCT
-} interpolation_t;
-
 typedef struct
 {
   int stage[2][3];

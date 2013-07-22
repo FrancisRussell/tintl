@@ -15,6 +15,13 @@ enum
   SSE_ALIGN_MASK = SSE_ALIGN - 1
 };
 
+typedef enum
+{
+  INTERLEAVED,
+  SPLIT,
+  SPLIT_PRODUCT
+} interpolation_t;
+
 static void pointwise_multiply_complex(int size, fftw_complex *a, const fftw_complex *b);
 static void pointwise_multiply_real(int size, double *a, const double *b);
 
@@ -71,6 +78,12 @@ static inline void pointwise_multiply_real(int size, double *a, const double *b)
   // This also handles the final element in the (size % 2 == 1) case.
   for(; i < size; ++i)
     a[i] *= b[i];
+}
+
+static inline int corner_size(const int n, const int negative)
+{
+  // In the even case, this will duplicate the Nyquist in both blocks
+  return n / 2 + (negative == 0);
 }
 
 #endif

@@ -12,13 +12,6 @@
 #include <assert.h>
 #include <string.h>
 
-typedef enum
-{
-  INTERLEAVED,
-  SPLIT,
-  SPLIT_PRODUCT
-} interpolation_t;
-
 typedef struct
 {
   int interpolation;
@@ -304,12 +297,6 @@ void halve_nyquist_components(naive_plan plan, fftw_complex *coarse)
     for(int i2 = 0; i2 < n2; ++i2)
       for(int i1 = 0; i1 < n1; ++i1)
         coarse[s2 * i2 +  s1 * i1 + (n0 / 2)] *= 0.5;
-}
-
-static int corner_size(const int n, const int negative)
-{
-  // In the even case, this will duplicate the Nyquist in both blocks
-  return n / 2 + (negative == 0);
 }
 
 static void pad_coarse_to_fine_interleaved(naive_plan plan, const fftw_complex *from, fftw_complex *to)

@@ -12,13 +12,6 @@
 #include <assert.h>
 #include <string.h>
 
-typedef enum
-{
-  INTERLEAVED,
-  SPLIT,
-  SPLIT_PRODUCT
-} interpolation_t;
-
 typedef struct
 {
   int interpolation;
@@ -72,12 +65,6 @@ static interpolate_plan allocate_plan(void)
   holder->destroy_detail = pa_interpolate_destroy_detail;
 
   return holder;
-}
-
-static int corner_size(const int n, const int negative)
-{
-  // In the even case, this will duplicate the Nyquist in both blocks
-  return n / 2 + (negative == 0);
 }
 
 static void plan_common(pa_plan plan, int n0, int n1, int n2, int flags)
