@@ -184,7 +184,7 @@ static void perform_timing(plan_constructor_t constructor,
   {
     for(int y=0; y < 2 * y_width; ++y)
     {
-      for(int x=0; x < 2 * z_width; ++x)
+      for(int x=0; x < 2 * x_width; ++x)
       {
         const int offset = 4*z*y_width*x_width + 2*y*x_width + x;
         const double x_pos = (x * pi)/x_width;
