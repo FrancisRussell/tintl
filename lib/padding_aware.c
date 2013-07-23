@@ -150,6 +150,10 @@ interpolate_plan interpolate_plan_3d_padding_aware_split(int n0, int n1, int n2,
       (double*) scratch_fine, ((double*) scratch_fine)+1,
       flags);
 
+  rs_free(scratch_coarse_real);
+  rs_free(scratch_coarse_imag);
+  rs_free(scratch_fine);
+
   return wrapper;
 }
 
@@ -281,6 +285,7 @@ void pa_interpolate_execute_split_product(const void *detail, double *rin, doubl
   double *const scratch_fine = rs_alloc_real(8 * block_size);
   pa_interpolate_execute_split(detail, rin, iin, out, scratch_fine);
   pointwise_multiply_real(8 * block_size, out, scratch_fine);
+  rs_free(scratch_fine);
 }
 
 void pa_interpolate_print_timings(const void *detail)

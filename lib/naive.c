@@ -218,6 +218,7 @@ void naive_interpolate_execute_split_product(const void *detail, double *rin, do
   double *const scratch_fine = rs_alloc_real(8 * block_size);
   naive_interpolate_execute_split(detail, rin, iin, out, scratch_fine);
   pointwise_multiply_real(8 * block_size, out, scratch_fine);
+  rs_free(scratch_fine);
 }
 
 void naive_interpolate_print_timings(const void *detail)
