@@ -33,7 +33,10 @@ typedef struct
 
 static void pointwise_multiply_complex(int size, fftw_complex *a, const fftw_complex *b);
 static void pointwise_multiply_real(int size, double *a, const double *b);
-static void populate_properties(interpolate_properties_t *props, interpolation_t type, int n0, int n1, int n2);
+
+void populate_properties(interpolate_properties_t *props, interpolation_t type, int n0, int n1, int n2);
+void pad_coarse_to_fine_interleaved(interpolate_properties_t *props, const fftw_complex *from, fftw_complex *to);
+void halve_nyquist_components(interpolate_properties_t *props, fftw_complex *coarse);
 
 static inline void pointwise_multiply_complex(int size, fftw_complex *a, const fftw_complex *b)
 {
@@ -88,25 +91,6 @@ static inline void pointwise_multiply_real(int size, double *a, const double *b)
   // This also handles the final element in the (size % 2 == 1) case.
   for(; i < size; ++i)
     a[i] *= b[i];
-}
-
-static void populate_properties(interpolate_properties_t *props, interpolation_t type, int n0, int n1, int n2)
-{
-  props->type = type;
-  props->dims[0] = n2;
-  props->dims[1] = n1;
-  props->dims[2] = n0;
-
-  for(int dim = 0; dim < 3; ++dim)
-    props->fine_dims[dim] = props->dims[dim] * 2;
-
-  props->strides[0] = 1;
-  props->strides[1] = n2;
-  props->strides[2] = n2 * n1;
-
-  props->fine_strides[0] = 1;
-  props->fine_strides[1] = n2 * 2;
-  props->fine_strides[2] = n2 * n1 * 4;
 }
 
 static int num_elements(interpolate_properties_t *props)

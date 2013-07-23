@@ -39,9 +39,6 @@ static void naive_interpolate_destroy_detail(void *detail);
 
 static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, int n2, int flags);
 
-static void pad_coarse_to_fine_interleaved(naive_plan plan, const fftw_complex *from, fftw_complex *to);
-static void halve_nyquist_components(naive_plan plan, fftw_complex *coarse);
-
 static const char *get_name(const void *detail)
 {
   return "naive";
@@ -180,8 +177,8 @@ static void naive_interpolate_execute_interleaved(const void *detail, fftw_compl
   time_point_save(&plan->before_forward);
   fftw_execute_dft(plan->naive_forward, input_copy, input_copy);
   time_point_save(&plan->after_forward);
-  halve_nyquist_components(plan, input_copy);
-  pad_coarse_to_fine_interleaved(plan, input_copy, out);
+  halve_nyquist_components(&plan->props, input_copy);
+  pad_coarse_to_fine_interleaved(&plan->props, input_copy, out);
   time_point_save(&plan->after_padding);
   fftw_execute_dft(plan->naive_backward, out, out);
   time_point_save(&plan->after_backward);
@@ -202,8 +199,8 @@ static void naive_interpolate_execute_split(const void *detail, double *rin, dou
   time_point_save(&plan->before_forward);
   fftw_execute_split_dft(plan->naive_forward, rin, iin, (double*) scratch_coarse, ((double*) scratch_coarse) + 1);
   time_point_save(&plan->after_forward);
-  halve_nyquist_components(plan, scratch_coarse);
-  pad_coarse_to_fine_interleaved(plan, scratch_coarse, scratch_fine);
+  halve_nyquist_components(&plan->props, scratch_coarse);
+  pad_coarse_to_fine_interleaved(&plan->props, scratch_coarse, scratch_fine);
   time_point_save(&plan->after_padding);
   fftw_execute_split_dft(plan->naive_backward, ((double*) scratch_fine) + 1, (double*) scratch_fine, iout, rout);
   time_point_save(&plan->after_backward);
@@ -229,86 +226,4 @@ void naive_interpolate_print_timings(const void *detail)
   printf("Forward: %f\n", time_point_delta(&plan->before_forward, &plan->after_forward));
   printf("Padding: %f\n", time_point_delta(&plan->after_forward, &plan->after_padding));
   printf("Backward: %f\n", time_point_delta(&plan->after_padding, &plan->after_backward));
-}
-
-static void block_copy_coarse_to_fine_interleaved(naive_plan plan, int n0, int n1, int n2, const fftw_complex *from, fftw_complex *to)
-{
-  assert(n0 <= plan->props.dims[0]);
-  assert(n1 <= plan->props.dims[1]);
-  assert(n2 <= plan->props.dims[2]);
-
-  const double scale_factor = 1.0 / num_elements(&plan->props);
-
-  for(int i2=0; i2 < n2; ++i2)
-  {
-    for(int i1=0; i1 < n1; ++i1)
-    {
-      for(int i0=0; i0 < n0; ++i0)
-        to[i0] = from[i0] * scale_factor;
-
-      from += plan->props.strides[1];
-      to += plan->props.fine_strides[1];
-    }
-
-    from += plan->props.strides[2] - n1 * plan->props.strides[1];
-    to += plan->props.fine_strides[2] - n1 * plan->props.fine_strides[1];
-  }
-}
-
-void halve_nyquist_components(naive_plan plan, fftw_complex *coarse)
-{
-  const int n2 = plan->props.dims[2];
-  const int n1 = plan->props.dims[1];
-  const int n0 = plan->props.dims[0];
-
-  const int s2 = plan->props.strides[2];
-  const int s1 = plan->props.strides[1];
-
-  if (n2 % 2 == 0)
-    for(int i1 = 0; i1 < n1; ++i1)
-      for(int i0 = 0; i0 < n0; ++i0)
-        coarse[s2 * (n2 / 2) +  s1 * i1 + i0] *= 0.5;
-
-  if (n1 % 2 == 0)
-    for(int i2 = 0; i2 < n2; ++i2)
-      for(int i0 = 0; i0 < n0; ++i0)
-        coarse[s2 * i2 +  s1 * (n1 / 2) + i0] *= 0.5;
-
-  if (n0 % 2 == 0)
-    for(int i2 = 0; i2 < n2; ++i2)
-      for(int i1 = 0; i1 < n1; ++i1)
-        coarse[s2 * i2 +  s1 * i1 + (n0 / 2)] *= 0.5;
-}
-
-static void pad_coarse_to_fine_interleaved(naive_plan plan, const fftw_complex *from, fftw_complex *to)
-{
-  const int coarse_size = num_elements(&plan->props);
-  memset(to, 0, 8 * coarse_size);
-
-  int corner_flags[3];
-
-  for(corner_flags[2] = 0; corner_flags[2] < 2; ++corner_flags[2])
-  {
-    for(corner_flags[1] = 0; corner_flags[1] < 2; ++corner_flags[1])
-    {
-      for(corner_flags[0] = 0; corner_flags[0] < 2; ++corner_flags[0])
-      {
-        const fftw_complex *coarse_block = from;
-        fftw_complex *fine_block = to;
-        int corner_sizes[3];
-
-        for(int dim = 0; dim < 3; ++dim)
-        {
-          corner_sizes[dim] = corner_size(plan->props.dims[dim], corner_flags[dim]);
-          const int coarse_index = (corner_flags[dim] == 0) ? 0 : plan->props.dims[dim] - corner_sizes[dim];
-          const int fine_index = (corner_flags[dim] == 0) ? 0 : plan->props.fine_dims[dim] - corner_sizes[dim];
-
-          coarse_block += plan->props.strides[dim] * coarse_index;
-          fine_block += plan->props.fine_strides[dim] * fine_index;
-        }
-
-        block_copy_coarse_to_fine_interleaved(plan, corner_sizes[0], corner_sizes[1], corner_sizes[2], coarse_block, fine_block);
-      }
-    }
-  }
 }
