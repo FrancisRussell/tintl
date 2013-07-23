@@ -71,7 +71,7 @@ interpolate_plan interpolate_plan_3d_naive_interleaved(int n0, int n1, int n2, i
   flags |= FFTW_MEASURE;
   plan_common(plan, INTERLEAVED, n0, n1, n2, flags);
 
-  const int block_size = plan->props.dims[0] * plan->props.dims[1] * plan->props.dims[2];
+  const int block_size = num_elements(&plan->props);
 
   fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
   fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
@@ -124,7 +124,7 @@ interpolate_plan interpolate_plan_3d_naive_split(int n0, int n1, int n2, int fla
   fftw_iodim backward_dims[3];
   for(int dim = 0; dim < 3; ++dim)
   {
-    backward_dims[2 - dim].n = plan->props.dims[dim];
+    backward_dims[2 - dim].n = plan->props.fine_dims[dim];
     backward_dims[2 - dim].is = plan->props.fine_strides[dim] * 2;
     backward_dims[2 - dim].os = plan->props.fine_strides[dim];
   }

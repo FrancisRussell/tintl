@@ -129,7 +129,7 @@ interpolate_plan interpolate_plan_3d_padding_aware_split(int n0, int n1, int n2,
   pa_plan plan = (pa_plan) wrapper->detail;
 
   flags |= FFTW_MEASURE;
-  plan_common(plan, INTERLEAVED, n0, n1, n2, flags);
+  plan_common(plan, SPLIT, n0, n1, n2, flags);
 
   const int block_size = num_elements(&plan->props);
 
