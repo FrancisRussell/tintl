@@ -4,9 +4,9 @@
 #include <assert.h>
 #include <string.h>
 
-static void block_copy_coarse_to_fine_interleaved(interpolate_properties_t *props, int n0, int n1, int n2, const fftw_complex *from, fftw_complex *to);
+static void block_copy_coarse_to_fine_interleaved(interpolate_properties_t *props, size_t n0, size_t n1, size_t n2, const fftw_complex *from, fftw_complex *to);
 
-void block_copy_coarse_to_fine_interleaved(interpolate_properties_t *props, int n0, int n1, int n2, const fftw_complex *from, fftw_complex *to)
+void block_copy_coarse_to_fine_interleaved(interpolate_properties_t *props, size_t n0, size_t n1, size_t n2, const fftw_complex *from, fftw_complex *to)
 {
   assert(n0 <= props->dims[0]);
   assert(n1 <= props->dims[1]);
@@ -14,11 +14,11 @@ void block_copy_coarse_to_fine_interleaved(interpolate_properties_t *props, int 
 
   const double scale_factor = 1.0 / num_elements(props);
 
-  for(int i2=0; i2 < n2; ++i2)
+  for(size_t i2=0; i2 < n2; ++i2)
   {
-    for(int i1=0; i1 < n1; ++i1)
+    for(size_t i1=0; i1 < n1; ++i1)
     {
-      for(int i0=0; i0 < n0; ++i0)
+      for(size_t i0=0; i0 < n0; ++i0)
         to[i0] = from[i0] * scale_factor;
 
       from += props->strides[1];
@@ -30,14 +30,14 @@ void block_copy_coarse_to_fine_interleaved(interpolate_properties_t *props, int 
   }
 }
 
-void populate_properties(interpolate_properties_t *props, interpolation_t type, int n0, int n1, int n2)
+void populate_properties(interpolate_properties_t *props, interpolation_t type, size_t n0, size_t n1, size_t n2)
 {
   props->type = type;
   props->dims[0] = n2;
   props->dims[1] = n1;
   props->dims[2] = n0;
 
-  for(int dim = 0; dim < 3; ++dim)
+  for(size_t dim = 0; dim < 3; ++dim)
     props->fine_dims[dim] = props->dims[dim] * 2;
 
   props->strides[0] = 1;
@@ -52,32 +52,32 @@ void populate_properties(interpolate_properties_t *props, interpolation_t type, 
 
 void halve_nyquist_components(interpolate_properties_t *props, fftw_complex *coarse)
 {
-  const int n2 = props->dims[2];
-  const int n1 = props->dims[1];
-  const int n0 = props->dims[0];
+  const size_t n2 = props->dims[2];
+  const size_t n1 = props->dims[1];
+  const size_t n0 = props->dims[0];
 
-  const int s2 = props->strides[2];
-  const int s1 = props->strides[1];
+  const size_t s2 = props->strides[2];
+  const size_t s1 = props->strides[1];
 
   if (n2 % 2 == 0)
-    for(int i1 = 0; i1 < n1; ++i1)
-      for(int i0 = 0; i0 < n0; ++i0)
+    for(size_t i1 = 0; i1 < n1; ++i1)
+      for(size_t i0 = 0; i0 < n0; ++i0)
         coarse[s2 * (n2 / 2) +  s1 * i1 + i0] *= 0.5;
 
   if (n1 % 2 == 0)
-    for(int i2 = 0; i2 < n2; ++i2)
-      for(int i0 = 0; i0 < n0; ++i0)
+    for(size_t i2 = 0; i2 < n2; ++i2)
+      for(size_t i0 = 0; i0 < n0; ++i0)
         coarse[s2 * i2 +  s1 * (n1 / 2) + i0] *= 0.5;
 
   if (n0 % 2 == 0)
-    for(int i2 = 0; i2 < n2; ++i2)
-      for(int i1 = 0; i1 < n1; ++i1)
+    for(size_t i2 = 0; i2 < n2; ++i2)
+      for(size_t i1 = 0; i1 < n1; ++i1)
         coarse[s2 * i2 +  s1 * i1 + (n0 / 2)] *= 0.5;
 }
 
 void pad_coarse_to_fine_interleaved(interpolate_properties_t *props, const fftw_complex *from, fftw_complex *to)
 {
-  const int coarse_size = num_elements(props);
+  const size_t coarse_size = num_elements(props);
   memset(to, 0, 8 * coarse_size * sizeof(fftw_complex));
 
   int corner_flags[3];
@@ -107,5 +107,3 @@ void pad_coarse_to_fine_interleaved(interpolate_properties_t *props, const fftw_
     }
   }
 }
-
-

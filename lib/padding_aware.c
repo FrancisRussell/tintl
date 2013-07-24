@@ -63,7 +63,7 @@ static interpolate_plan allocate_plan(void)
 static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)
 {
   populate_properties(&plan->props, type, n0, n1, n2);
-  const int block_size = num_elements(&plan->props);
+  const size_t block_size = num_elements(&plan->props);
   fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
 
   // Interpolation in direction 2, iteration in direction 0, positive frequencies
@@ -112,7 +112,7 @@ interpolate_plan interpolate_plan_3d_padding_aware_interleaved(int n0, int n1, i
   flags |= FFTW_MEASURE;
   plan_common(plan, INTERLEAVED, n0, n1, n2, flags);
 
-  const int block_size = num_elements(&plan->props);
+  const size_t block_size = num_elements(&plan->props);
 
   fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
 
@@ -131,7 +131,7 @@ interpolate_plan interpolate_plan_3d_padding_aware_split(int n0, int n1, int n2,
   flags |= FFTW_MEASURE;
   plan_common(plan, SPLIT, n0, n1, n2, flags);
 
-  const int block_size = num_elements(&plan->props);
+  const size_t block_size = num_elements(&plan->props);
 
   double *const scratch_coarse_real = rs_alloc_real(block_size);
   double *const scratch_coarse_imag = rs_alloc_real(block_size);
@@ -181,14 +181,14 @@ static void pa_interpolate_destroy_detail(void *detail)
 
 static void backward_transform(const pa_plan plan, fftw_complex *data)
 {
-  int corner_sizes[3][2];
+  size_t corner_sizes[3][2];
 
   for(int negative = 0; negative < 2; ++negative)
     for(int dim = 0; dim < 3; ++dim)
       corner_sizes[dim][negative] = corner_size(plan->props.dims[dim], negative);
 
   // Interpolation in direction 2
-  for(int y = 0; y < corner_sizes[1][0]; ++y)
+  for(size_t y = 0; y < corner_sizes[1][0]; ++y)
   {
     fftw_complex *positive_start = data + y * plan->props.fine_strides[1];
     fftw_execute_dft(plan->n2_backward[0], positive_start, positive_start);
@@ -197,7 +197,7 @@ static void backward_transform(const pa_plan plan, fftw_complex *data)
     fftw_execute_dft(plan->n2_backward[1], negative_start, negative_start);
   }
 
-  for(int y = plan->props.fine_dims[1] - corner_sizes[1][1]; y < plan->props.fine_dims[1]; ++y)
+  for(size_t y = plan->props.fine_dims[1] - corner_sizes[1][1]; y < plan->props.fine_dims[1]; ++y)
   {
     fftw_complex *positive_start = data + y * plan->props.fine_strides[1];
     fftw_execute_dft(plan->n2_backward[0], positive_start, positive_start);
@@ -209,7 +209,7 @@ static void backward_transform(const pa_plan plan, fftw_complex *data)
   time_point_save(&plan->after_backward[2]);
 
   // Interpolation in direction 1
-  for(int z = 0; z < plan->props.fine_dims[2]; ++z)
+  for(size_t z = 0; z < plan->props.fine_dims[2]; ++z)
   {
     fftw_complex *positive_start = data + z * plan->props.fine_strides[2];
     fftw_execute_dft(plan->n1_backward[0], positive_start, positive_start);
@@ -231,7 +231,7 @@ static void pa_interpolate_execute_interleaved(const void *detail, fftw_complex 
   pa_plan plan = (pa_plan) detail;
   assert(INTERLEAVED == plan->props.type);
 
-  const int block_size = num_elements(&plan->props);
+  const size_t block_size = num_elements(&plan->props);
 
   fftw_complex *const input_copy = rs_alloc_complex(block_size);
   memcpy(input_copy, in, sizeof(fftw_complex) * block_size);
@@ -251,7 +251,7 @@ static void pa_interpolate_execute_split(const void *detail, double *rin, double
   pa_plan plan = (pa_plan) detail;
   assert(SPLIT == plan->props.type || SPLIT_PRODUCT == plan->props.type);
 
-  const int block_size = num_elements(&plan->props);
+  const size_t block_size = num_elements(&plan->props);
   fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
   fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
 
@@ -272,7 +272,7 @@ void pa_interpolate_execute_split_product(const void *detail, double *rin, doubl
   pa_plan plan = (pa_plan) detail;
   assert(SPLIT_PRODUCT == plan->props.type);
 
-  const int block_size = num_elements(&plan->props);
+  const size_t block_size = num_elements(&plan->props);
   double *const scratch_fine = rs_alloc_real(8 * block_size);
   pa_interpolate_execute_split(detail, rin, iin, out, scratch_fine);
   pointwise_multiply_real(8 * block_size, out, scratch_fine);

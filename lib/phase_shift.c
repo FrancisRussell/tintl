@@ -61,22 +61,22 @@ static void expand_dim0_split(phase_shift_plan plan, double *in[2], double *out[
 static void expand_dim1_split(phase_shift_plan plan, double *in[2], double *out[2], fftw_complex *scratch);
 static void expand_dim2_split(phase_shift_plan plan, double *in[2], double *out[2], fftw_complex *scratch);
 
-static void gather_complex(int size, int stride, const fftw_complex *in, fftw_complex *out);
-static void scatter_complex(int size, int stride, fftw_complex *out, const fftw_complex *in);
+static void gather_complex(size_t size, size_t stride, const fftw_complex *in, fftw_complex *out);
+static void scatter_complex(size_t size, size_t stride, fftw_complex *out, const fftw_complex *in);
 
-static void gather_split(int size, int stride, const double *rin, const double *iin, fftw_complex *out);
-static void scatter_split(int size, int stride, double *rout, double *iout, const fftw_complex *in);
+static void gather_split(size_t size, size_t stride, const double *rin, const double *iin, fftw_complex *out);
+static void scatter_split(size_t size, size_t stride, double *rout, double *iout, const fftw_complex *in);
 
 static void gather_blocks_real(phase_shift_plan plan, double *blocks[8], double *out);
 static void gather_blocks_complex(phase_shift_plan plan, fftw_complex *blocks[8], fftw_complex *out);
 
-static void interleave_complex(int size, fftw_complex *out, const fftw_complex *even, const fftw_complex *odd);
-static void interleave_real(int size, double *out, const double *even, const double *odd);
+static void interleave_complex(size_t size, fftw_complex *out, const fftw_complex *even, const fftw_complex *odd);
+static void interleave_real(size_t size, double *out, const double *even, const double *odd);
 
 static void interpolate_split_common(const phase_shift_plan plan, double *blocks[8][2]);
-static void build_rotation(int size, fftw_complex *out);
-static int max_dimension(const phase_shift_plan plan);
-static int round_align(int value);
+static void build_rotation(size_t size, fftw_complex *out);
+static size_t max_dimension(const phase_shift_plan plan);
+static size_t round_align(size_t value);
 
 
 static const char *get_name(const void *detail)
@@ -142,15 +142,15 @@ static inline void transform_out_interleaved(phase_shift_plan plan, int dim, fft
   fftw_execute_dft(plan->idfts[dim], scratch, out);
 }
 
-static int round_align(const int value)
+static size_t round_align(const size_t value)
 {
-  const int remainder = value % SSE_ALIGN;
+  const size_t remainder = value % SSE_ALIGN;
   return (remainder == 0 ? value : value + SSE_ALIGN - remainder);
 }
 
-static int max_dimension(const phase_shift_plan plan)
+static size_t max_dimension(const phase_shift_plan plan)
 {
-  int max_dim = 0;
+  size_t max_dim = 0;
   for(int dim=0; dim < 3; ++dim)
     max_dim = (max_dim < plan->props.dims[dim] ? plan->props.dims[dim] : max_dim);
   return max_dim;
@@ -200,7 +200,7 @@ interpolate_plan interpolate_plan_3d_phase_shift_interleaved(int n0, int n1, int
   flags |= FFTW_MEASURE;
   plan_common(plan, INTERLEAVED, n0, n1, n2, flags);
 
-  const int block_size = num_elements(&plan->props);
+  const size_t block_size = num_elements(&plan->props);
   fftw_complex *const data_in = rs_alloc_complex(block_size);
   fftw_complex *const data_out = rs_alloc_complex(block_size);
   fftw_complex *const scratch = rs_alloc_complex(max_dimension(plan));
@@ -274,7 +274,7 @@ interpolate_plan interpolate_plan_3d_phase_shift_split(int n0, int n1, int n2, i
   flags |= FFTW_MEASURE;
   plan_common(plan, SPLIT, n0, n1, n2, flags);
 
-  const int block_size = num_elements(&plan->props);
+  const size_t block_size = num_elements(&plan->props);
   double *const real_scratch = rs_alloc_real(block_size);
   double *const imag_scratch = rs_alloc_real(block_size);
   fftw_complex *const scratch = rs_alloc_complex(max_dimension(plan));
@@ -386,11 +386,11 @@ static void phase_shift_interpolate_destroy_detail(void *detail)
   free(plan);
 }
 
-static void build_rotation(int size, fftw_complex *out)
+static void build_rotation(size_t size, fftw_complex *out)
 {
   const double theta_base = pi/size;
 
-  for(int freq = 0; freq < size; ++freq)
+  for(size_t freq = 0; freq < size; ++freq)
   {
     if (size % 2 == 0 && freq == size / 2)
     {
@@ -409,13 +409,13 @@ static void build_rotation(int size, fftw_complex *out)
   }
 }
 
-static void interleave_complex(int size, fftw_complex *out, const fftw_complex *even, const fftw_complex *odd)
+static void interleave_complex(size_t size, fftw_complex *out, const fftw_complex *even, const fftw_complex *odd)
 {
 #ifdef __SSE2__
   if ((((uintptr_t) out | (uintptr_t) even | (uintptr_t) odd) & SSE_ALIGN_MASK) == 0)
   {
     // This does not result in any observable performance improvement
-    for(int i = 0; i < size; ++i)
+    for(size_t i = 0; i < size; ++i)
     {
       __m128d even_vec = _mm_load_pd((const double*)(even + i));
       __m128d odd_vec = _mm_load_pd((const double*)(odd + i));
@@ -426,7 +426,7 @@ static void interleave_complex(int size, fftw_complex *out, const fftw_complex *
   else
   {
 #endif
-    for(int i = 0; i < size; ++i)
+    for(size_t i = 0; i < size; ++i)
     {
       out[i*2] = even[i];
       out[i*2 + 1] = odd[i];
@@ -436,9 +436,9 @@ static void interleave_complex(int size, fftw_complex *out, const fftw_complex *
 #endif
 }
 
-static void interleave_real(int size, double *out, const double *even, const double *odd)
+static void interleave_real(size_t size, double *out, const double *even, const double *odd)
 {
-  int i = 0;
+  size_t i = 0;
 
 #ifdef __SSE2__
   if ((((uintptr_t) out | (uintptr_t) even | (uintptr_t) odd) & SSE_ALIGN_MASK) == 0)
@@ -464,34 +464,34 @@ static void interleave_real(int size, double *out, const double *even, const dou
   }
 }
 
-static void gather_complex(int size, int stride, const fftw_complex *in, fftw_complex *out)
+static void gather_complex(size_t size, size_t stride, const fftw_complex *in, fftw_complex *out)
 {
-  for(int i=0; i<size; ++i)
+  for(size_t i=0; i<size; ++i)
     out[i] = in[i*stride];
 }
 
-static void scatter_complex(int size, int stride, fftw_complex *out, const fftw_complex *in)
+static void scatter_complex(size_t size, size_t stride, fftw_complex *out, const fftw_complex *in)
 {
-  for(int i=0; i<size; ++i)
+  for(size_t i=0; i<size; ++i)
     out[i*stride] = in[i];
 }
 
-static void gather_split(int size, int stride, const double *rin, const double *iin, fftw_complex *cout)
+static void gather_split(size_t size, size_t stride, const double *rin, const double *iin, fftw_complex *cout)
 {
   double *const out = (double*) cout;
 
-  for(int i=0; i < size; ++i)
+  for(size_t i=0; i < size; ++i)
   {
     out[i * 2] = rin[i * stride];
     out[i * 2 + 1] = iin[i * stride];
   }
 }
 
-static void scatter_split(int size, int stride, double *rout, double *iout, const fftw_complex *cin)
+static void scatter_split(size_t size, size_t stride, double *rout, double *iout, const fftw_complex *cin)
 {
   double *const in = (double*) cin;
 
-  for(int i=0; i < size; ++i)
+  for(size_t i=0; i < size; ++i)
   {
     rout[i * stride] = in[2 * i];
     iout[i * stride] = in[2 * i + 1];
@@ -500,11 +500,11 @@ static void scatter_split(int size, int stride, double *rout, double *iout, cons
 
 static void gather_blocks_complex(phase_shift_plan plan, fftw_complex *blocks[8], fftw_complex *out)
 {
-  for(int i2=0; i2 < plan->props.dims[2] * 2; ++i2)
+  for(size_t i2=0; i2 < plan->props.dims[2] * 2; ++i2)
   {
-    for(int i1=0; i1 < plan->props.dims[1] * 2; ++i1)
+    for(size_t i1=0; i1 < plan->props.dims[1] * 2; ++i1)
     {
-      const int in_offset = (i2/2) * plan->props.strides[2] + (i1/2) * plan->props.strides[1];
+      const size_t in_offset = (i2/2) * plan->props.strides[2] + (i1/2) * plan->props.strides[1];
       const fftw_complex *even = &blocks[(i2 % 2) + (i1 % 2) * 2][in_offset];
       const fftw_complex *odd = &blocks[(i2 % 2) + (i1 % 2) * 2 + 4][in_offset];
       fftw_complex *row_out = &out[i2 * plan->props.strides[2] * 4 + i1 * plan->props.strides[1] * 2];
@@ -515,11 +515,11 @@ static void gather_blocks_complex(phase_shift_plan plan, fftw_complex *blocks[8]
 
 static void gather_blocks_real(phase_shift_plan plan, double *blocks[8], double *out)
 {
-  for(int i2=0; i2 < plan->props.dims[2] * 2; ++i2)
+  for(size_t i2=0; i2 < plan->props.dims[2] * 2; ++i2)
   {
-    for(int i1=0; i1 < plan->props.dims[1] * 2; ++i1)
+    for(size_t i1=0; i1 < plan->props.dims[1] * 2; ++i1)
     {
-      const int in_offset = (i2/2) * plan->props.strides[2] + (i1/2) * plan->props.strides[1];
+      const size_t in_offset = (i2/2) * plan->props.strides[2] + (i1/2) * plan->props.strides[1];
       const double *even = &blocks[(i2 % 2) + (i1 % 2) * 2][in_offset];
       const double *odd = &blocks[(i2 % 2) + (i1 % 2) * 2 + 4][in_offset];
       double *row_out = &out[i2 * plan->props.strides[2] * 4 + i1 * plan->props.strides[1] * 2];
@@ -533,7 +533,7 @@ static void phase_shift_interpolate_execute_interleaved(const void *detail, fftw
   phase_shift_plan plan = (phase_shift_plan) detail;
   assert(INTERLEAVED == plan->props.type);
 
-  const int block_size = num_elements(&plan->props);
+  const size_t block_size = num_elements(&plan->props);
 
   fftw_complex *const block_data = rs_alloc_complex(7 * block_size);
   fftw_complex *blocks[8];
@@ -566,7 +566,7 @@ static void phase_shift_interpolate_execute_interleaved(const void *detail, fftw
 
 static void interpolate_split_common(const phase_shift_plan plan, double *blocks[8][2])
 {
-  const int max_dim = max_dimension(plan);
+  const size_t max_dim = max_dimension(plan);
   fftw_complex *const scratch = rs_alloc_complex(max_dim);
 
   time_point_save(&plan->before_expand2);
@@ -588,8 +588,8 @@ static void phase_shift_interpolate_execute_split(const void *detail, double *ri
   phase_shift_plan plan = (phase_shift_plan) detail;
   assert(SPLIT == plan->props.type);
 
-  const int block_size = num_elements(&plan->props);
-  const int rounded_block_size = round_align(block_size);
+  const size_t block_size = num_elements(&plan->props);
+  const size_t rounded_block_size = round_align(block_size);
   double *const block_data = rs_alloc_real(2 * 7 * rounded_block_size);
   double *blocks[8][2];
 
@@ -626,8 +626,8 @@ void phase_shift_interpolate_execute_split_product(const void *detail, double *r
   phase_shift_plan plan = (phase_shift_plan) detail;
   assert(SPLIT_PRODUCT == plan->props.type);
 
-  const int block_size = num_elements(&plan->props);
-  const int rounded_block_size = round_align(block_size);
+  const size_t block_size = num_elements(&plan->props);
+  const size_t rounded_block_size = round_align(block_size);
   double *const block_data = rs_alloc_real(2 * 7 * rounded_block_size);
   double *blocks[8][2];
 
@@ -669,9 +669,9 @@ void phase_shift_interpolate_print_timings(const void *detail)
 static void expand_dim0(phase_shift_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch)
 {
   static const int dim = 0;
-  for(int i2=0; i2 < plan->props.dims[2]; ++i2)
+  for(size_t i2=0; i2 < plan->props.dims[2]; ++i2)
   {
-    for(int i1=0; i1 < plan->props.dims[1]; ++i1)
+    for(size_t i1=0; i1 < plan->props.dims[1]; ++i1)
     {
       const size_t offset = i1*plan->props.strides[1] + i2*plan->props.strides[2];
 
@@ -693,9 +693,9 @@ static void expand_dim0(phase_shift_plan plan, fftw_complex *in, fftw_complex *o
 static void expand_dim0_split(phase_shift_plan plan, double *in[2], double *out[2], fftw_complex *scratch)
 {
   static const int dim = 0;
-  for(int i2=0; i2 < plan->props.dims[2]; ++i2)
+  for(size_t i2=0; i2 < plan->props.dims[2]; ++i2)
   {
-    for(int i1=0; i1 < plan->props.dims[1]; ++i1)
+    for(size_t i1=0; i1 < plan->props.dims[1]; ++i1)
     {
       const size_t offset = i1*plan->props.strides[1] + i2*plan->props.strides[2];
 
@@ -718,9 +718,9 @@ static void expand_dim0_split(phase_shift_plan plan, double *in[2], double *out[
 static void expand_dim1(phase_shift_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch)
 {
   static const int dim = 1;
-  for(int i2=0; i2 < plan->props.dims[2]; ++i2)
+  for(size_t i2=0; i2 < plan->props.dims[2]; ++i2)
   {
-    for(int i0=0; i0 < plan->props.dims[0]; ++i0)
+    for(size_t i0=0; i0 < plan->props.dims[0]; ++i0)
     {
       const size_t offset = i0 + i2*plan->props.strides[2];
 
@@ -742,9 +742,9 @@ static void expand_dim1(phase_shift_plan plan, fftw_complex *in, fftw_complex *o
 static void expand_dim1_split(phase_shift_plan plan, double *in[2], double *out[2], fftw_complex *scratch)
 {
   static const int dim = 1;
-  for(int i2=0; i2 < plan->props.dims[2]; ++i2)
+  for(size_t i2=0; i2 < plan->props.dims[2]; ++i2)
   {
-    for(int i0=0; i0 < plan->props.dims[0]; ++i0)
+    for(size_t i0=0; i0 < plan->props.dims[0]; ++i0)
     {
       const size_t offset = i0 + i2*plan->props.strides[2];
 
@@ -766,9 +766,9 @@ static void expand_dim1_split(phase_shift_plan plan, double *in[2], double *out[
 static void expand_dim2(phase_shift_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch)
 {
   static const int dim = 2;
-  for(int i1=0; i1 < plan->props.dims[1]; ++i1)
+  for(size_t i1=0; i1 < plan->props.dims[1]; ++i1)
   {
-    for(int i0=0; i0 < plan->props.dims[0]; ++i0)
+    for(size_t i0=0; i0 < plan->props.dims[0]; ++i0)
     {
       const size_t offset = i1*plan->props.strides[1] + i0;
 
@@ -790,9 +790,9 @@ static void expand_dim2(phase_shift_plan plan, fftw_complex *in, fftw_complex *o
 static void expand_dim2_split(phase_shift_plan plan, double *in[2], double *out[2], fftw_complex *scratch)
 {
   static const int dim = 2;
-  for(int i1=0; i1 < plan->props.dims[1]; ++i1)
+  for(size_t i1=0; i1 < plan->props.dims[1]; ++i1)
   {
-    for(int i0=0; i0 < plan->props.dims[0]; ++i0)
+    for(size_t i0=0; i0 < plan->props.dims[0]; ++i0)
     {
       const size_t offset = i1*plan->props.strides[1] + i0;
 

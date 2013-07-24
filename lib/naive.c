@@ -62,7 +62,7 @@ static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, i
 {
   populate_properties(&plan->props, type, n0, n1, n2);
 
-  const int block_size = num_elements(&plan->props);
+  const size_t block_size = num_elements(&plan->props);
 
   fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
   fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
@@ -121,7 +121,7 @@ static void naive_interpolate_execute_interleaved(const void *detail, fftw_compl
   naive_plan plan = (naive_plan) detail;
   assert(INTERLEAVED == plan->props.type);
 
-  const int block_size = num_elements(&plan->props);
+  const size_t block_size = num_elements(&plan->props);
 
   fftw_complex *const input_copy = rs_alloc_complex(block_size);
   memcpy(input_copy, in, sizeof(fftw_complex) * block_size);
@@ -143,7 +143,7 @@ static void naive_interpolate_execute_split(const void *detail, double *rin, dou
   naive_plan plan = (naive_plan) detail;
   assert(SPLIT == plan->props.type || SPLIT_PRODUCT == plan->props.type);
 
-  const int block_size = num_elements(&plan->props);
+  const size_t block_size = num_elements(&plan->props);
 
   fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
   fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
@@ -168,7 +168,7 @@ void naive_interpolate_execute_split_product(const void *detail, double *rin, do
   naive_plan plan = (naive_plan) detail;
   assert(SPLIT_PRODUCT == plan->props.type);
 
-  const int block_size = num_elements(&plan->props);
+  const size_t block_size = num_elements(&plan->props);
   double *const scratch_fine = rs_alloc_real(8 * block_size);
   naive_interpolate_execute_split(detail, rin, iin, out, scratch_fine);
   pointwise_multiply_real(8 * block_size, out, scratch_fine);
