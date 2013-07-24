@@ -226,15 +226,6 @@ static void backward_transform(const pa_plan plan, fftw_complex *data)
   time_point_save(&plan->after_backward[0]);
 }
 
-static void split_interleaved(const int size, fftw_complex *const in, double *rout, double *iout)
-{
-  for(int i=0; i<size; ++i)
-  {
-    rout[i] = creal(in[i]);
-    iout[i] = cimag(in[i]);
-  }
-}
-
 static void pa_interpolate_execute_interleaved(const void *detail, fftw_complex *in, fftw_complex *out)
 {
   pa_plan plan = (pa_plan) detail;
@@ -271,7 +262,7 @@ static void pa_interpolate_execute_split(const void *detail, double *rin, double
   pad_coarse_to_fine_interleaved(&plan->props, scratch_coarse, scratch_fine);
   time_point_save(&plan->after_padding);
   backward_transform(plan, scratch_fine);
-  split_interleaved(8 * block_size, scratch_fine, rout, iout);
+  interleaved_to_split(8 * block_size, scratch_fine, rout, iout);
   rs_free(scratch_coarse);
   rs_free(scratch_fine);
 }

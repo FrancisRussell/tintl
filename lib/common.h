@@ -33,6 +33,8 @@ typedef struct
 
 static void pointwise_multiply_complex(int size, fftw_complex *a, const fftw_complex *b);
 static void pointwise_multiply_real(int size, double *a, const double *b);
+static void interleaved_to_split(const int size, const fftw_complex *in, double *rout, double *iout);
+static void split_to_interleaved(const int size, const double *rin, const double *iin, fftw_complex *out);
 
 void populate_properties(interpolate_properties_t *props, interpolation_t type, int n0, int n1, int n2);
 void pad_coarse_to_fine_interleaved(interpolate_properties_t *props, const fftw_complex *from, fftw_complex *to);
@@ -102,6 +104,26 @@ static inline int corner_size(const int n, const int negative)
 {
   // In the even case, this will duplicate the Nyquist in both blocks
   return n / 2 + (negative == 0);
+}
+
+static inline void interleaved_to_split(const int size, const fftw_complex *in, double *rout, double *iout)
+{
+  const double *in_e = (const double*) in;
+  for(int i=0; i<size; ++i)
+  {
+    rout[i] = in_e[2 *i];
+    iout[i] = in_e[2 * i + 1];
+  }
+}
+
+static void split_to_interleaved(const int size, const double *rin, const double *iin, fftw_complex *out)
+{
+  double *out_e = (double*) out;
+  for(int i=0; i<size; ++i)
+  {
+    out_e[2 * i]  = rin[i];
+    out_e[2 * i + 1] = iin[i];
+  }
 }
 
 #endif

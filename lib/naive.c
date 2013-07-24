@@ -61,15 +61,6 @@ static interpolate_plan allocate_plan(void)
 static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)
 {
   populate_properties(&plan->props, type, n0, n1, n2);
-}
-
-interpolate_plan interpolate_plan_3d_naive_interleaved(int n0, int n1, int n2, int flags)
-{
-  interpolate_plan wrapper = allocate_plan();
-  naive_plan plan = (naive_plan) wrapper->detail;
-
-  flags |= FFTW_MEASURE;
-  plan_common(plan, INTERLEAVED, n0, n1, n2, flags);
 
   const int block_size = num_elements(&plan->props);
 
@@ -84,6 +75,15 @@ interpolate_plan interpolate_plan_3d_naive_interleaved(int n0, int n1, int n2, i
 
   rs_free(scratch_coarse);
   rs_free(scratch_fine);
+}
+
+interpolate_plan interpolate_plan_3d_naive_interleaved(int n0, int n1, int n2, int flags)
+{
+  interpolate_plan wrapper = allocate_plan();
+  naive_plan plan = (naive_plan) wrapper->detail;
+
+  flags |= FFTW_MEASURE;
+  plan_common(plan, INTERLEAVED, n0, n1, n2, flags);
 
   return wrapper;
 }
@@ -95,54 +95,6 @@ interpolate_plan interpolate_plan_3d_naive_split(int n0, int n1, int n2, int fla
 
   flags |= FFTW_MEASURE;
   plan_common(plan, SPLIT, n0, n1, n2, flags);
-
-  const int block_size = num_elements(&plan->props);
-
-  double *const scratch_coarse_real = rs_alloc_real(block_size);
-  double *const scratch_coarse_imag = rs_alloc_real(block_size);
-
-  fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
-
-  double *const scratch_fine_real = rs_alloc_real(8 * block_size);
-  double *const scratch_fine_imag = rs_alloc_real(8 * block_size);
-
-  fftw_iodim forward_dims[3];
-  for(int dim = 0; dim < 3; ++dim)
-  {
-    forward_dims[2 - dim].n = plan->props.dims[dim];
-    forward_dims[2 - dim].is = plan->props.strides[dim];
-    forward_dims[2 - dim].os = plan->props.strides[dim] * 2;
-  }
-
-  plan->naive_forward = fftw_plan_guru_split_dft(3, forward_dims, 0, NULL,
-      scratch_coarse_real, scratch_coarse_imag,
-      (double*) scratch_fine, ((double*) scratch_fine)+1,
-      flags);
-
-  assert(plan->naive_forward != NULL);
-
-  fftw_iodim backward_dims[3];
-  for(int dim = 0; dim < 3; ++dim)
-  {
-    backward_dims[2 - dim].n = plan->props.fine_dims[dim];
-    backward_dims[2 - dim].is = plan->props.fine_strides[dim] * 2;
-    backward_dims[2 - dim].os = plan->props.fine_strides[dim];
-  }
-
-  plan->naive_backward = fftw_plan_guru_split_dft(3, backward_dims, 0, NULL,
-      ((double*) scratch_fine) + 1, (double*) scratch_fine,
-      scratch_fine_imag, scratch_fine_real,
-      flags);
-
-  assert(plan->naive_backward != NULL);
-
-  rs_free(scratch_fine_imag);
-  rs_free(scratch_fine_real);
-
-  rs_free(scratch_fine);
-
-  rs_free(scratch_coarse_imag);
-  rs_free(scratch_coarse_real);
 
   return wrapper;
 }
@@ -196,14 +148,16 @@ static void naive_interpolate_execute_split(const void *detail, double *rin, dou
   fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
   fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
 
+  split_to_interleaved(block_size, rin, iin, scratch_coarse);
   time_point_save(&plan->before_forward);
-  fftw_execute_split_dft(plan->naive_forward, rin, iin, (double*) scratch_coarse, ((double*) scratch_coarse) + 1);
+  fftw_execute_dft(plan->naive_forward, scratch_coarse, scratch_coarse);
   time_point_save(&plan->after_forward);
   halve_nyquist_components(&plan->props, scratch_coarse);
   pad_coarse_to_fine_interleaved(&plan->props, scratch_coarse, scratch_fine);
   time_point_save(&plan->after_padding);
-  fftw_execute_split_dft(plan->naive_backward, ((double*) scratch_fine) + 1, (double*) scratch_fine, iout, rout);
+  fftw_execute_dft(plan->naive_backward, scratch_fine, scratch_fine);
   time_point_save(&plan->after_backward);
+  interleaved_to_split(8 * block_size, scratch_fine, rout, iout);
 
   rs_free(scratch_fine);
   rs_free(scratch_coarse);
