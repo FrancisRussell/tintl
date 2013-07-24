@@ -231,16 +231,19 @@ static void pa_interpolate_execute_interleaved(const void *detail, fftw_complex 
   pa_plan plan = (pa_plan) detail;
   assert(INTERLEAVED == plan->props.type);
 
-  const size_t block_size = num_elements(&plan->props);
+  block_info_t coarse_info, fine_info;
+  get_block_info_coarse(&plan->props, &coarse_info);
+  get_block_info_fine(&plan->props, &fine_info);
 
+  const size_t block_size = num_elements_block(&coarse_info);
   fftw_complex *const input_copy = rs_alloc_complex(block_size);
-  memcpy(input_copy, in, sizeof(fftw_complex) * block_size);
 
+  memcpy(input_copy, in, sizeof(fftw_complex) * block_size);
   time_point_save(&plan->before_forward);
   fftw_execute_dft(plan->forward, input_copy, input_copy);
   time_point_save(&plan->after_forward);
-  halve_nyquist_components(&plan->props, input_copy);
-  pad_coarse_to_fine_interleaved(&plan->props, input_copy, out);
+  halve_nyquist_components(&plan->props, &coarse_info, input_copy);
+  pad_coarse_to_fine_interleaved(&plan->props, &coarse_info, input_copy, &fine_info, out, 0);
   time_point_save(&plan->after_padding);
   backward_transform(plan, out);
   rs_free(input_copy);
@@ -251,15 +254,19 @@ static void pa_interpolate_execute_split(const void *detail, double *rin, double
   pa_plan plan = (pa_plan) detail;
   assert(SPLIT == plan->props.type || SPLIT_PRODUCT == plan->props.type);
 
-  const size_t block_size = num_elements(&plan->props);
+  block_info_t coarse_info, fine_info;
+  get_block_info_coarse(&plan->props, &coarse_info);
+  get_block_info_fine(&plan->props, &fine_info);
+  const size_t block_size = num_elements_block(&coarse_info);
+
   fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
   fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
 
   time_point_save(&plan->before_forward);
   fftw_execute_split_dft(plan->forward, rin, iin, (double*) scratch_coarse, ((double*) scratch_coarse) + 1);
   time_point_save(&plan->after_forward);
-  halve_nyquist_components(&plan->props, scratch_coarse);
-  pad_coarse_to_fine_interleaved(&plan->props, scratch_coarse, scratch_fine);
+  halve_nyquist_components(&plan->props, &coarse_info, scratch_coarse);
+  pad_coarse_to_fine_interleaved(&plan->props, &coarse_info, scratch_coarse, &fine_info, scratch_fine, 0);
   time_point_save(&plan->after_padding);
   backward_transform(plan, scratch_fine);
   interleaved_to_split(8 * block_size, scratch_fine, rout, iout);

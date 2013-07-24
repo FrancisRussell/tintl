@@ -31,14 +31,23 @@ typedef struct
   int fine_strides[3];
 } interpolate_properties_t;
 
+typedef struct
+{
+  size_t dims[3];
+  size_t strides[3];
+} block_info_t;
+
 static void pointwise_multiply_complex(size_t size, fftw_complex *a, const fftw_complex *b);
 static void pointwise_multiply_real(size_t size, double *a, const double *b);
 static void interleaved_to_split(const size_t size, const fftw_complex *in, double *rout, double *iout);
 static void split_to_interleaved(const size_t size, const double *rin, const double *iin, fftw_complex *out);
 
 void populate_properties(interpolate_properties_t *props, interpolation_t type, size_t n0, size_t n1, size_t n2);
-void pad_coarse_to_fine_interleaved(interpolate_properties_t *props, const fftw_complex *from, fftw_complex *to);
-void halve_nyquist_components(interpolate_properties_t *props, fftw_complex *coarse);
+void pad_coarse_to_fine_interleaved(interpolate_properties_t *props,
+  const block_info_t *from_info, const fftw_complex *from,
+  const block_info_t *to_info, fftw_complex *to,
+  int positive_only);
+void halve_nyquist_components(interpolate_properties_t *props, block_info_t *block_info, fftw_complex *coarse);
 
 static inline void pointwise_multiply_complex(size_t size, fftw_complex *a, const fftw_complex *b)
 {
@@ -100,6 +109,55 @@ static size_t num_elements(interpolate_properties_t *props)
   return props->dims[0] * props->dims[1] * props->dims[2];
 }
 
+static void get_block_info_coarse(interpolate_properties_t *props, block_info_t *info)
+{
+  info->dims[0] = props->dims[0];
+  info->dims[1] = props->dims[1];
+  info->dims[2] = props->dims[2];
+
+  info->strides[0] = 1;
+  info->strides[1] = info->dims[0];
+  info->strides[2] = info->dims[0] * info->dims[1];
+}
+
+static void get_block_info_fine(interpolate_properties_t *props, block_info_t *info)
+{
+  info->dims[0] = props->dims[0] * 2;
+  info->dims[1] = props->dims[1] * 2;
+  info->dims[2] = props->dims[2] * 2;
+
+  info->strides[0] = 1;
+  info->strides[1] = info->dims[0];
+  info->strides[2] = info->dims[0] * info->dims[1];
+}
+
+static void get_block_info_real_recip_coarse(interpolate_properties_t *props, block_info_t *info)
+{
+  info->dims[0] = props->dims[0] / 2 + 1;
+  info->dims[1] = props->dims[1];
+  info->dims[2] = props->dims[2];
+
+  info->strides[0] = 1;
+  info->strides[1] = info->dims[0];
+  info->strides[2] = info->dims[0] * info->dims[1];
+}
+
+static void get_block_info_real_recip_fine(interpolate_properties_t *props, block_info_t *info)
+{
+  info->dims[0] = props->dims[0] + 1;
+  info->dims[1] = props->dims[1] * 2;
+  info->dims[2] = props->dims[2] * 2;
+
+  info->strides[0] = 1;
+  info->strides[1] = info->dims[0];
+  info->strides[2] = info->dims[0] * info->dims[1];
+}
+
+static size_t num_elements_block(const block_info_t *block_info)
+{
+  return block_info->dims[0] * block_info->dims[1] * block_info->dims[2];
+}
+
 static inline size_t corner_size(const size_t n, const int negative)
 {
   // In the even case, this will duplicate the Nyquist in both blocks
@@ -111,7 +169,7 @@ static inline void interleaved_to_split(const size_t size, const fftw_complex *i
   const double *in_e = (const double*) in;
   for(size_t i=0; i<size; ++i)
   {
-    rout[i] = in_e[2 *i];
+    rout[i] = in_e[2 * i];
     iout[i] = in_e[2 * i + 1];
   }
 }
