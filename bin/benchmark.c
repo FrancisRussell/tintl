@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <assert.h>
+#include <string.h>
 
 typedef interpolate_plan (*plan_constructor_t)(int n0, int n1, int n2, int flags);
 
@@ -142,8 +143,8 @@ static fftw_complex storage_get_elem(const storage_t *storage, size_t offset)
 
 static fftw_complex test_function(double x, double y, double z)
 {
-  return ((1 + sin(2 * x)) * (3 + cos(3 * y)) * (5 + sin(4 * z))) +
-         ((7 + cos(2 * x)) * (9 + sin(3 * y)) * (11 + cos(4 * z))) * I;
+  return ((1 + sin(2 * x)) * (3 + cos(3 * y)) * (5 + sin(1 * z))) +
+         ((7 + cos(3 * x)) * (9 + sin(1 * y)) * (11 + cos(2 * z))) * I;
 }
 
 static void generate_test_data(storage_t *storage, const int z_width, const int y_width, const int x_width)
@@ -218,22 +219,118 @@ static void perform_timing(plan_constructor_t constructor,
   interpolate_destroy_plan(plan);
 }
 
+static void benchmark(FILE *file, storage_layout_t layout, plan_constructor_t *constructors)
+{
+  static const char* size_format_string = "%-8s";
+  static const char* size_format_int = "%-8d";
+
+  static const char* timing_format_string = "%-15s";
+  static const char* timing_format_float = "%-15f";
+
+  int plan_type_count = 0;
+
+  while(constructors[plan_type_count] != NULL)
+    ++plan_type_count;
+
+  fprintf(file, "#data layout: %s\n", layout_name(layout));
+  fprintf(file, size_format_string, "#size");
+  for(int i=0; i < plan_type_count; ++i)
+  {
+    interpolate_plan plan = constructors[i](1, 1, 1, 0);
+    fprintf(file, timing_format_string, interpolate_get_name(plan));
+    interpolate_destroy_plan(plan);
+  }
+
+  fprintf(file, "\n");
+
+  for(int size = 7; size < 100; size += 2)
+  {
+    const int runs = 10;
+
+    size_t x_width, y_width, z_width;
+    x_width = y_width = z_width = size;
+
+    const size_t block_size = x_width * y_width * z_width;
+    storage_t coarse, fine, reference;
+    storage_allocate(&coarse, layout, block_size);
+    storage_allocate(&fine, layout, 8 * block_size);
+    storage_allocate(&reference, layout, 8 * block_size);
+
+    generate_test_data(&coarse, z_width, y_width, x_width);
+    generate_test_data(&reference, 2 * z_width, 2 * y_width, 2 * x_width);
+
+    fprintf(file, size_format_int, size);
+
+    for(int plan_type = 0; plan_type < plan_type_count; ++plan_type)
+    {
+      double time = 0.0;
+      time_point_t begin_interpolate, end_interpolate;
+      interpolate_plan plan = constructors[plan_type](x_width, y_width, z_width, 0);
+
+      for(int run = 0; run < runs; ++run)
+      {
+        time_point_save(&begin_interpolate);
+        execute_interpolate(plan, &coarse, &fine);
+        time_point_save(&end_interpolate);
+        time += time_point_delta(&begin_interpolate, &end_interpolate);
+      }
+
+      interpolate_destroy_plan(plan);
+      time /= runs;
+      fprintf(file, timing_format_float, time);
+
+      assert(compute_delta_norm(8 * block_size, &fine, &reference) < 1e-5);
+    }
+
+    storage_free(&coarse);
+    storage_free(&fine);
+    storage_free(&reference);
+
+    fprintf(file, "\n");
+  }
+}
+
 int main(int argc, char **argv)
 {
-  int z = 75, y = 75, x = 75;
+  if (argc > 1 && strcmp("--table-interleaved", argv[1]) == 0)
+  {
+    plan_constructor_t interleaved_constructors[] = {
+      interpolate_plan_3d_naive_interleaved,
+      interpolate_plan_3d_padding_aware_interleaved,
+      interpolate_plan_3d_phase_shift_interleaved,
+      NULL
+    };
 
-  perform_timing(interpolate_plan_3d_naive_interleaved, INTERLEAVED, z, y, x);
-  printf("\n");
-  perform_timing(interpolate_plan_3d_padding_aware_interleaved, INTERLEAVED, z, y, x);
-  printf("\n");
-  perform_timing(interpolate_plan_3d_phase_shift_interleaved, INTERLEAVED, z, y, x);
+    benchmark(stdout, INTERLEAVED, interleaved_constructors);
+  }
+  else if (argc > 1 && strcmp("--table-split", argv[1]) == 0)
+  {
+    plan_constructor_t split_constructors[] = {
+      interpolate_plan_3d_naive_split,
+      interpolate_plan_3d_padding_aware_split,
+      interpolate_plan_3d_phase_shift_split,
+      NULL
+    };
 
-  printf("\n\n");
-  perform_timing(interpolate_plan_3d_naive_split, SPLIT, z, y, x);
-  printf("\n");
-  perform_timing(interpolate_plan_3d_padding_aware_split, SPLIT, z, y, x);
-  printf("\n");
-  perform_timing(interpolate_plan_3d_phase_shift_split, SPLIT, z, y, x);
+    benchmark(stdout, SPLIT, split_constructors);
+  }
+  else
+  {
+    int z = 75, y = 75, x = 75;
+
+    perform_timing(interpolate_plan_3d_naive_interleaved, INTERLEAVED, z, y, x);
+    printf("\n");
+    perform_timing(interpolate_plan_3d_padding_aware_interleaved, INTERLEAVED, z, y, x);
+    printf("\n");
+    perform_timing(interpolate_plan_3d_phase_shift_interleaved, INTERLEAVED, z, y, x);
+
+    printf("\n\n");
+    perform_timing(interpolate_plan_3d_naive_split, SPLIT, z, y, x);
+    printf("\n");
+    perform_timing(interpolate_plan_3d_padding_aware_split, SPLIT, z, y, x);
+    printf("\n");
+    perform_timing(interpolate_plan_3d_phase_shift_split, SPLIT, z, y, x);
+  }
 
   return EXIT_SUCCESS;
 }
