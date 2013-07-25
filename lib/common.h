@@ -182,4 +182,10 @@ static void split_to_interleaved(const size_t size, const double *rin, const dou
   }
 }
 
+static inline void fftw_destroy_plan_maybe_null(fftw_plan plan)
+{
+  if (plan != NULL)
+    fftw_destroy_plan(plan);
+}
+
 #endif
