@@ -140,9 +140,10 @@ static fftw_complex storage_get_elem(const storage_t *storage, size_t offset)
   }
 }
 
-static double test_function(double x, double y, double z)
+static fftw_complex test_function(double x, double y, double z)
 {
-  return sin(2 * x) + cos(3 * y) + sin(4 * z);
+  return ((1 + sin(2 * x)) * (3 + cos(3 * y)) * (5 + sin(4 * z))) +
+         ((7 + cos(2 * x)) * (9 + sin(3 * y)) * (11 + cos(4 * z))) * I;
 }
 
 static void generate_test_data(storage_t *storage, const int z_width, const int y_width, const int x_width)
