@@ -27,14 +27,12 @@ typedef struct
   int type;
   int dims[3];
   int strides[3];
-  int fine_dims[3];
-  int fine_strides[3];
 } interpolate_properties_t;
 
 typedef struct
 {
-  size_t dims[3];
-  size_t strides[3];
+  int dims[3];
+  int strides[3];
 } block_info_t;
 
 static void pointwise_multiply_complex(size_t size, fftw_complex *a, const fftw_complex *b);

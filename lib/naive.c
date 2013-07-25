@@ -77,8 +77,12 @@ static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, i
   fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
   fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
 
-  int rev_dims[] = { plan->props.dims[2], plan->props.dims[1], plan->props.dims[0] };
-  int rev_fine_dims[] = { plan->props.fine_dims[2], plan->props.fine_dims[1], plan->props.fine_dims[0] };
+  block_info_t coarse_info, fine_info;
+  get_block_info_coarse(&plan->props, &coarse_info);
+  get_block_info_fine(&plan->props, &fine_info);
+
+  int rev_dims[] = { coarse_info.dims[2], coarse_info.dims[1], coarse_info.dims[0] };
+  int rev_fine_dims[] = { fine_info.dims[2], fine_info.dims[1], fine_info.dims[0] };
 
   plan->real_forward = NULL;
   plan->real_backward = NULL;
@@ -114,8 +118,9 @@ interpolate_plan interpolate_plan_3d_naive_split(int n0, int n1, int n2, int fla
   plan_common(plan, SPLIT, n0, n1, n2, flags);
   plan->strategy = SEPARATE;
 
-  block_info_t coarse_info, transformed_coarse_info, transformed_fine_info;
+  block_info_t coarse_info, fine_info, transformed_coarse_info, transformed_fine_info;
   get_block_info_coarse(&plan->props, &coarse_info);
+  get_block_info_fine(&plan->props, &fine_info);
   get_block_info_real_recip_coarse(&plan->props, &transformed_coarse_info);
   get_block_info_real_recip_fine(&plan->props, &transformed_fine_info);
 
@@ -123,8 +128,8 @@ interpolate_plan interpolate_plan_3d_naive_split(int n0, int n1, int n2, int fla
   const size_t transformed_size_coarse = num_elements_block(&transformed_coarse_info);
   const size_t transformed_size_fine = num_elements_block(&transformed_fine_info);
 
-  int rev_dims[] = { plan->props.dims[2], plan->props.dims[1], plan->props.dims[0] };
-  int rev_fine_dims[] = { plan->props.fine_dims[2], plan->props.fine_dims[1], plan->props.fine_dims[0] };
+  int rev_dims[] = { coarse_info.dims[2], coarse_info.dims[1], coarse_info.dims[0] };
+  int rev_fine_dims[] = { fine_info.dims[2], fine_info.dims[1], fine_info.dims[0] };
 
   double *const scratch_coarse_real = rs_alloc_real(block_size);
   fftw_complex *const scratch_coarse_complex = rs_alloc_complex(transformed_size_coarse);

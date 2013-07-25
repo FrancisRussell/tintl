@@ -41,16 +41,9 @@ void populate_properties(interpolate_properties_t *props, interpolation_t type, 
   props->dims[1] = n1;
   props->dims[2] = n0;
 
-  for(size_t dim = 0; dim < 3; ++dim)
-    props->fine_dims[dim] = props->dims[dim] * 2;
-
   props->strides[0] = 1;
   props->strides[1] = n2;
   props->strides[2] = n2 * n1;
-
-  props->fine_strides[0] = 1;
-  props->fine_strides[1] = n2 * 2;
-  props->fine_strides[2] = n2 * n1 * 4;
 }
 
 void halve_nyquist_components(interpolate_properties_t *props, block_info_t *block_info, fftw_complex *coarse)
@@ -105,8 +98,8 @@ void pad_coarse_to_fine_interleaved(interpolate_properties_t *props,
         for(int dim = 0; dim < 3; ++dim)
         {
           corner_sizes[dim] = corner_size(props->dims[dim], corner_flags[dim]);
-          const int coarse_index = (corner_flags[dim] == 0) ? 0 : props->dims[dim] - corner_sizes[dim];
-          const int fine_index = (corner_flags[dim] == 0) ? 0 : props->fine_dims[dim] - corner_sizes[dim];
+          const int coarse_index = (corner_flags[dim] == 0) ? 0 : from_info->dims[dim] - corner_sizes[dim];
+          const int fine_index = (corner_flags[dim] == 0) ? 0 : to_info->dims[dim] - corner_sizes[dim];
 
           coarse_block += from_info->strides[dim] * coarse_index;
           fine_block += to_info->strides[dim] * fine_index;
