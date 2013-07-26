@@ -26,4 +26,8 @@ void interpolate_execute_split_product(const interpolate_plan plan, double *rin,
 void interpolate_print_timings(const interpolate_plan plan);
 void interpolate_destroy_plan(interpolate_plan plan);
 
+interpolate_plan interpolate_plan_3d_interleaved_best(int n0, int n1, int n2, int flags);
+interpolate_plan interpolate_plan_3d_split_best(int n0, int n1, int n2, int flags);
+interpolate_plan interpolate_plan_3d_split_product_best(int n0, int n1, int n2, int flags);
+
 #endif

@@ -115,12 +115,31 @@ void pad_coarse_to_fine_interleaved(interpolate_properties_t *props,
   }
 }
 
-double time_interpolate_split(interpolate_plan plan, const interpolate_properties_t *props)
+double time_interpolate_interleaved(interpolate_plan plan, const int *dims)
 {
   ticks before, after;
-  block_info_t coarse_info;
-  get_block_info_coarse(props, &coarse_info);
-  const size_t block_size = num_elements_block(&coarse_info);
+  const size_t block_size = dims[0] * dims[1] * dims[2];
+  fftw_complex *const in = rs_alloc_complex(block_size);
+  fftw_complex *const out = rs_alloc_complex(8 * block_size);
+
+  memset(in, 0, block_size * sizeof(fftw_complex));
+  memset(out, 0, 8 * block_size * sizeof(fftw_complex));
+
+  before = getticks();
+  interpolate_execute_interleaved(plan, in, out);
+  after = getticks();
+
+  rs_free(in);
+  rs_free(out);
+
+  return elapsed(after, before);
+}
+
+
+double time_interpolate_split(interpolate_plan plan, const int *dims)
+{
+  ticks before, after;
+  const size_t block_size = dims[0] * dims[1] * dims[2];
   double *const in1 = rs_alloc_real(block_size);
   double *const in2 = rs_alloc_real(block_size);
   double *const out1 = rs_alloc_real(8 * block_size);
@@ -128,8 +147,8 @@ double time_interpolate_split(interpolate_plan plan, const interpolate_propertie
 
   memset(in1, 0, block_size * sizeof(double));
   memset(in2, 0, block_size * sizeof(double));
-  memset(out1, 0, block_size * sizeof(double));
-  memset(out2, 0, block_size * sizeof(double));
+  memset(out1, 0, 8 * block_size * sizeof(double));
+  memset(out2, 0, 8 * block_size * sizeof(double));
 
   before = getticks();
   interpolate_execute_split(plan, in1, in2, out1, out2);
@@ -143,19 +162,17 @@ double time_interpolate_split(interpolate_plan plan, const interpolate_propertie
   return elapsed(after, before);
 }
 
-double time_interpolate_split_product(interpolate_plan plan, const interpolate_properties_t *props)
+double time_interpolate_split_product(interpolate_plan plan, const int *dims)
 {
   ticks before, after;
-  block_info_t coarse_info;
-  get_block_info_coarse(props, &coarse_info);
-  const size_t block_size = num_elements_block(&coarse_info);
+  const size_t block_size = dims[0] * dims[1] * dims[2];
   double *const in1 = rs_alloc_real(block_size);
   double *const in2 = rs_alloc_real(block_size);
   double *const out = rs_alloc_real(8 * block_size);
 
   memset(in1, 0, block_size * sizeof(double));
   memset(in2, 0, block_size * sizeof(double));
-  memset(out, 0, block_size * sizeof(double));
+  memset(out, 0, 8 * block_size * sizeof(double));
 
   before = getticks();
   interpolate_execute_split_product(plan, in1, in2, out);

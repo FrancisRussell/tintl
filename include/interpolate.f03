@@ -1,22 +1,20 @@
 interface
-  type(C_PTR) function plan_interpolate_3d(n0,n1,n2,in,out,flags) bind(C, name='plan_interpolate_3d')
+  type(C_PTR) function plan_interpolate_3d(n0,n1,n2,flags) bind(C, name='interpolate_plan_3d_interleaved_best')
     import
     integer(C_INT), value :: n0
     integer(C_INT), value :: n1
     integer(C_INT), value :: n2
-    complex(C_DOUBLE_COMPLEX), dimension(*), intent(in) :: in
-    complex(C_DOUBLE_COMPLEX), dimension(*), intent(out) :: out
     integer(C_INT), value :: flags
   end function plan_interpolate_3d
 
-  subroutine interpolate_execute(plan,in,out) bind(C, name='interpolate_execute')
+  subroutine interpolate_execute(plan,in,out) bind(C, name='interpolate_execute_interleaved')
     import
     type(C_PTR), value :: plan
     complex(C_DOUBLE_COMPLEX), dimension(*), intent(in) :: in
     complex(C_DOUBLE_COMPLEX), dimension(*), intent(out) :: out
   end subroutine interpolate_execute
 
-  type(C_PTR) function plan_interpolate_3d_split(n0,n1,n2,flags) bind(C, name='plan_interpolate_3d_split')
+  type(C_PTR) function plan_interpolate_3d_split(n0,n1,n2,flags) bind(C, name='interpolate_plan_3d_split_best')
     import
     integer(C_INT), value :: n0
     integer(C_INT), value :: n1
@@ -33,7 +31,7 @@ interface
     real(C_DOUBLE), dimension(*), intent(out) :: iout
   end subroutine interpolate_execute_split
 
-  type(C_PTR) function plan_interpolate_3d_split_product(n0,n1,n2,flags) bind(C, name='plan_interpolate_3d_split_product')
+  type(C_PTR) function plan_interpolate_3d_split_product(n0,n1,n2,flags) bind(C, name='interpolate_plan_3d_split_product_best')
     import
     integer(C_INT), value :: n0
     integer(C_INT), value :: n1

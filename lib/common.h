@@ -48,8 +48,10 @@ void pad_coarse_to_fine_interleaved(interpolate_properties_t *props,
   const block_info_t *to_info, fftw_complex *to,
   int positive_only);
 void halve_nyquist_components(interpolate_properties_t *props, block_info_t *block_info, fftw_complex *coarse);
-double time_interpolate_split(interpolate_plan plan, const interpolate_properties_t *props);
-double time_interpolate_split_product(interpolate_plan plan, const interpolate_properties_t *props);
+
+double time_interpolate_interleaved(interpolate_plan plan, const int *dims);
+double time_interpolate_split(interpolate_plan plan, const int *dims);
+double time_interpolate_split_product(interpolate_plan plan, const int *dims);
 
 static inline void pointwise_multiply_complex(size_t size, fftw_complex *a, const fftw_complex *b)
 {

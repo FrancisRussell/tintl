@@ -148,24 +148,24 @@ interpolate_plan interpolate_plan_3d_naive_split(int n0, int n1, int n2, int fla
   rs_free(scratch_fine_complex);
 
   plan->strategy = SEPARATE;
-  const double separate_time = time_interpolate_split(wrapper, &plan->props);
+  const double separate_time = time_interpolate_split(wrapper, plan->props.dims);
   plan->strategy = PACKED;
-  const double packed_time = time_interpolate_split(wrapper, &plan->props);
+  const double packed_time = time_interpolate_split(wrapper, plan->props.dims);
   plan->strategy = (separate_time < packed_time) ? SEPARATE : PACKED;
 
   return wrapper;
 }
 
-interpolate_plan plan_interpolate_3d_naive_split_product(int n0, int n1, int n2, int flags)
+interpolate_plan interpolate_plan_3d_naive_product(int n0, int n1, int n2, int flags)
 {
   interpolate_plan wrapper = interpolate_plan_3d_naive_split(n0, n1, n2, flags);
   naive_plan plan = (naive_plan) wrapper->detail;
   plan->props.type = SPLIT_PRODUCT;
 
   plan->strategy = SEPARATE;
-  const double separate_time = time_interpolate_split_product(wrapper, &plan->props);
+  const double separate_time = time_interpolate_split_product(wrapper, plan->props.dims);
   plan->strategy = PACKED;
-  const double packed_time = time_interpolate_split_product(wrapper, &plan->props);
+  const double packed_time = time_interpolate_split_product(wrapper, plan->props.dims);
   plan->strategy = (separate_time < packed_time) ? SEPARATE : PACKED;
   return wrapper;
 }
@@ -189,7 +189,7 @@ static void naive_interpolate_destroy_detail(void *detail)
 static void naive_interpolate_execute_interleaved(const void *detail, fftw_complex *in, fftw_complex *out)
 {
   naive_plan plan = (naive_plan) detail;
-  assert(INTERLEAVED == plan->props.type);
+  assert(plan->strategy == PACKED);
 
   block_info_t coarse_info, fine_info;
   get_block_info_coarse(&plan->props, &coarse_info);

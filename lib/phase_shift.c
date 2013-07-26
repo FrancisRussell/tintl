@@ -367,7 +367,7 @@ interpolate_plan interpolate_plan_3d_phase_shift_split(int n0, int n1, int n2, i
   return wrapper;
 }
 
-interpolate_plan plan_interpolate_3d_split_product(int n0, int n1, int n2, int flags)
+interpolate_plan interpolate_plan_3d_phase_shift_product(int n0, int n1, int n2, int flags)
 {
   interpolate_plan wrapper = interpolate_plan_3d_phase_shift_split(n0, n1, n2, flags);
   ((phase_shift_plan) wrapper->detail)->props.type = SPLIT_PRODUCT;
