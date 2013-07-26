@@ -22,7 +22,7 @@ typedef interpolate_plan_s *interpolate_plan;
 const char *interpolate_get_name(const interpolate_plan plan);
 void interpolate_execute_interleaved(const interpolate_plan plan, fftw_complex *in, fftw_complex *out);
 void interpolate_execute_split(const interpolate_plan plan, double *rin, double *iin, double *rout, double *iout);
-void interpolate_execute_split_product(const interpolate_plan plan, const void *detail, double *rin, double *iin, double *out);
+void interpolate_execute_split_product(const interpolate_plan plan, double *rin, double *iin, double *out);
 void interpolate_print_timings(const interpolate_plan plan);
 void interpolate_destroy_plan(interpolate_plan plan);
 

@@ -3,6 +3,9 @@
 #include <fftw3.h>
 #include <assert.h>
 #include <string.h>
+#include <interpolate.h>
+#include <allocation.h>
+#include <fftw_cycle.h>
 
 static void block_copy_coarse_to_fine_interleaved(interpolate_properties_t *props, size_t n0, size_t n1, size_t n2,
     const block_info_t *from_info, const fftw_complex *from,
@@ -110,4 +113,57 @@ void pad_coarse_to_fine_interleaved(interpolate_properties_t *props,
       }
     }
   }
+}
+
+double time_interpolate_split(interpolate_plan plan, const interpolate_properties_t *props)
+{
+  ticks before, after;
+  block_info_t coarse_info;
+  get_block_info_coarse(props, &coarse_info);
+  const size_t block_size = num_elements_block(&coarse_info);
+  double *const in1 = rs_alloc_real(block_size);
+  double *const in2 = rs_alloc_real(block_size);
+  double *const out1 = rs_alloc_real(8 * block_size);
+  double *const out2 = rs_alloc_real(8 * block_size);
+
+  memset(in1, 0, block_size * sizeof(double));
+  memset(in2, 0, block_size * sizeof(double));
+  memset(out1, 0, block_size * sizeof(double));
+  memset(out2, 0, block_size * sizeof(double));
+
+  before = getticks();
+  interpolate_execute_split(plan, in1, in2, out1, out2);
+  after = getticks();
+
+  rs_free(in1);
+  rs_free(in2);
+  rs_free(out1);
+  rs_free(out2);
+
+  return elapsed(after, before);
+}
+
+double time_interpolate_split_product(interpolate_plan plan, const interpolate_properties_t *props)
+{
+  ticks before, after;
+  block_info_t coarse_info;
+  get_block_info_coarse(props, &coarse_info);
+  const size_t block_size = num_elements_block(&coarse_info);
+  double *const in1 = rs_alloc_real(block_size);
+  double *const in2 = rs_alloc_real(block_size);
+  double *const out = rs_alloc_real(8 * block_size);
+
+  memset(in1, 0, block_size * sizeof(double));
+  memset(in2, 0, block_size * sizeof(double));
+  memset(out, 0, block_size * sizeof(double));
+
+  before = getticks();
+  interpolate_execute_split_product(plan, in1, in2, out);
+  after = getticks();
+
+  rs_free(in1);
+  rs_free(in2);
+  rs_free(out);
+
+  return elapsed(after, before);
 }

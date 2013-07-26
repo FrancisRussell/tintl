@@ -116,7 +116,6 @@ interpolate_plan interpolate_plan_3d_naive_split(int n0, int n1, int n2, int fla
 
   flags |= FFTW_MEASURE;
   plan_common(plan, SPLIT, n0, n1, n2, flags);
-  plan->strategy = SEPARATE;
 
   block_info_t coarse_info, fine_info, transformed_coarse_info, transformed_fine_info;
   get_block_info_coarse(&plan->props, &coarse_info);
@@ -148,13 +147,26 @@ interpolate_plan interpolate_plan_3d_naive_split(int n0, int n1, int n2, int fla
   rs_free(scratch_fine_real);
   rs_free(scratch_fine_complex);
 
+  plan->strategy = SEPARATE;
+  const double separate_time = time_interpolate_split(wrapper, &plan->props);
+  plan->strategy = PACKED;
+  const double packed_time = time_interpolate_split(wrapper, &plan->props);
+  plan->strategy = (separate_time < packed_time) ? SEPARATE : PACKED;
+
   return wrapper;
 }
 
 interpolate_plan plan_interpolate_3d_naive_split_product(int n0, int n1, int n2, int flags)
 {
   interpolate_plan wrapper = interpolate_plan_3d_naive_split(n0, n1, n2, flags);
-  ((naive_plan) wrapper->detail)->props.type = SPLIT_PRODUCT;
+  naive_plan plan = (naive_plan) wrapper->detail;
+  plan->props.type = SPLIT_PRODUCT;
+
+  plan->strategy = SEPARATE;
+  const double separate_time = time_interpolate_split_product(wrapper, &plan->props);
+  plan->strategy = PACKED;
+  const double packed_time = time_interpolate_split_product(wrapper, &plan->props);
+  plan->strategy = (separate_time < packed_time) ? SEPARATE : PACKED;
   return wrapper;
 }
 
@@ -269,12 +281,31 @@ void naive_interpolate_execute_split_product(const void *detail, double *rin, do
 {
   naive_plan plan = (naive_plan) detail;
   assert(SPLIT_PRODUCT == plan->props.type);
-
   const size_t block_size = num_elements(&plan->props);
-  double *const scratch_fine = rs_alloc_real(8 * block_size);
-  naive_interpolate_execute_split(detail, rin, iin, out, scratch_fine);
-  pointwise_multiply_real(8 * block_size, out, scratch_fine);
-  rs_free(scratch_fine);
+
+  if (plan->strategy == PACKED)
+  {
+    fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
+    fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
+
+    split_to_interleaved(block_size, rin, iin, scratch_coarse);
+    naive_interpolate_execute_interleaved(detail, scratch_coarse, scratch_fine);
+    complex_to_product(8 * block_size, scratch_fine, out);
+
+    rs_free(scratch_coarse);
+    rs_free(scratch_fine);
+  }
+  else if (plan->strategy == SEPARATE)
+  {
+    double *const scratch_fine = rs_alloc_real(8 * block_size);
+    naive_interpolate_execute_split(detail, rin, iin, out, scratch_fine);
+    pointwise_multiply_real(8 * block_size, out, scratch_fine);
+    rs_free(scratch_fine);
+  }
+  else
+  {
+    assert(0 && "Unknown strategy");
+  }
 }
 
 void naive_interpolate_print_timings(const void *detail)

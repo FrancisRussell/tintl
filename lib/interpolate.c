@@ -18,7 +18,7 @@ void interpolate_execute_split(const interpolate_plan plan, double *rin, double 
   plan->execute_split(plan->detail, rin, iin, rout, iout);
 }
 
-void interpolate_execute_split_product(const interpolate_plan plan, const void *detail, double *rin, double *iin, double *out)
+void interpolate_execute_split_product(const interpolate_plan plan, double *rin, double *iin, double *out)
 {
   plan->execute_split_product(plan->detail, rin, iin, out);
 }
