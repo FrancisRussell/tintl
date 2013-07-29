@@ -82,9 +82,6 @@ static void scatter_split(size_t size, size_t stride, double *rout, double *iout
 static void gather_blocks_real(phase_shift_plan plan, double *blocks[8], double *out);
 static void gather_blocks_complex(phase_shift_plan plan, fftw_complex *blocks[8], fftw_complex *out);
 
-static void interleave_complex(size_t size, fftw_complex *out, const fftw_complex *even, const fftw_complex *odd);
-static void interleave_real(size_t size, double *out, const double *even, const double *odd);
-
 static void interpolate_real_common(const phase_shift_plan plan, double *blocks[8]);
 static void build_rotation(size_t size, fftw_complex *out);
 static size_t max_dimension(const phase_shift_plan plan);
@@ -446,34 +443,6 @@ static void interleave_complex(size_t size, fftw_complex *out, const fftw_comple
 #ifdef __SSE2__
   }
 #endif
-}
-
-static void interleave_real(size_t size, double *out, const double *even, const double *odd)
-{
-  size_t i = 0;
-
-#ifdef __SSE2__
-  if ((((uintptr_t) out | (uintptr_t) even | (uintptr_t) odd) & SSE_ALIGN_MASK) == 0)
-  {
-    for(; i + (SSE_ALIGN / sizeof(double)) <= size; i += (SSE_ALIGN / sizeof(double)))
-    {
-      __m128d even_vec, odd_vec, first_vec, second_vec;
-      even_vec = _mm_load_pd((even + i));
-      odd_vec = _mm_load_pd((odd + i));
-      first_vec = _mm_shuffle_pd(even_vec, odd_vec, 0);
-      second_vec = _mm_shuffle_pd(even_vec, odd_vec, 3);
-      _mm_store_pd(out + i * 2, first_vec);
-      _mm_store_pd(out + i * 2 + 2, second_vec);
-    }
-  }
-#endif
-
-  // This also handles the final element in the (size % 2 == 1) case.
-  for(;i < size; ++i)
-  {
-    out[i*2] = even[i];
-    out[i*2 + 1] = odd[i];
-  }
 }
 
 static void gather_complex(size_t size, size_t stride, const fftw_complex *in, fftw_complex *out)

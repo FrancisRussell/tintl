@@ -115,6 +115,63 @@ void pad_coarse_to_fine_interleaved(interpolate_properties_t *props,
   }
 }
 
+void deinterleave_real(const size_t size, const double *in, double *rout, double *iout)
+{
+  const double *in_e = (const double*) in;
+  size_t i = 0;
+
+#ifdef __SSE2__
+  if ((((uintptr_t) in | (uintptr_t) rout | (uintptr_t) iout) & SSE_ALIGN_MASK) == 0)
+  {
+    for(; i + 2 <= size; i += 2)
+    {
+      __m128d first_in, second_in, first_out, second_out;
+      first_in = _mm_load_pd(in_e + 2 * i);
+      second_in = _mm_load_pd(in_e + 2 * i + 2);
+      first_out = _mm_shuffle_pd(first_in, second_in, 0);
+      second_out = _mm_shuffle_pd(first_in, second_in, 3);
+      _mm_store_pd(rout + i, first_out);
+      _mm_store_pd(iout + i, second_out);
+    }
+  }
+#endif
+
+  // This also handles the final element in the (size % 2 == 1) case.
+  for(; i<size; ++i)
+  {
+    rout[i] = in_e[2 * i];
+    iout[i] = in_e[2 * i + 1];
+  }
+}
+
+void interleave_real(size_t size, double *out, const double *even, const double *odd)
+{
+  size_t i = 0;
+
+#ifdef __SSE2__
+  if ((((uintptr_t) out | (uintptr_t) even | (uintptr_t) odd) & SSE_ALIGN_MASK) == 0)
+  {
+    for(; i + 2 <= size; i += 2)
+    {
+      __m128d even_vec, odd_vec, first_vec, second_vec;
+      even_vec = _mm_load_pd((even + i));
+      odd_vec = _mm_load_pd((odd + i));
+      first_vec = _mm_shuffle_pd(even_vec, odd_vec, 0);
+      second_vec = _mm_shuffle_pd(even_vec, odd_vec, 3);
+      _mm_store_pd(out + i * 2, first_vec);
+      _mm_store_pd(out + i * 2 + 2, second_vec);
+    }
+  }
+#endif
+
+  // This also handles the final element in the (size % 2 == 1) case.
+  for(;i < size; ++i)
+  {
+    out[i * 2] = even[i];
+    out[i * 2 + 1] = odd[i];
+  }
+}
+
 double time_interpolate_interleaved(interpolate_plan plan, const int *dims)
 {
   ticks before, after;

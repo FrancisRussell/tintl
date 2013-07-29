@@ -252,7 +252,7 @@ static void naive_interpolate_execute_split(const void *detail, double *rin, dou
     fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
     fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
 
-    split_to_interleaved(block_size, rin, iin, scratch_coarse);
+    interleave_real(block_size, (double*) scratch_coarse, rin, iin);
     time_point_save(&plan->before_forward);
     fftw_execute_dft(plan->interleaved_forward, scratch_coarse, scratch_coarse);
     time_point_save(&plan->after_forward);
@@ -261,7 +261,7 @@ static void naive_interpolate_execute_split(const void *detail, double *rin, dou
     time_point_save(&plan->after_padding);
     fftw_execute_dft(plan->interleaved_backward, scratch_fine, scratch_fine);
     time_point_save(&plan->after_backward);
-    interleaved_to_split(8 * block_size, scratch_fine, rout, iout);
+    deinterleave_real(8 * block_size, (const double*) scratch_fine, rout, iout);
 
     rs_free(scratch_fine);
     rs_free(scratch_coarse);
@@ -288,7 +288,7 @@ void naive_interpolate_execute_split_product(const void *detail, double *rin, do
     fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
     fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
 
-    split_to_interleaved(block_size, rin, iin, scratch_coarse);
+    interleave_real(block_size, (double*) scratch_coarse, rin, iin);
     naive_interpolate_execute_interleaved(detail, scratch_coarse, scratch_fine);
     complex_to_product(8 * block_size, scratch_fine, out);
 
