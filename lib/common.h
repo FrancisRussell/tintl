@@ -47,6 +47,8 @@ void pad_coarse_to_fine_interleaved(interpolate_properties_t *props,
   const block_info_t *from_info, const fftw_complex *from,
   const block_info_t *to_info, fftw_complex *to,
   int positive_only);
+void copy_real(const block_info_t *from_info, const double *from,
+  const block_info_t *to_info, double *to);
 void halve_nyquist_components(interpolate_properties_t *props, block_info_t *block_info, fftw_complex *coarse);
 
 double time_interpolate_interleaved(interpolate_plan plan, const int *dims);

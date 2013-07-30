@@ -241,3 +241,24 @@ double time_interpolate_split_product(interpolate_plan plan, const int *dims)
 
   return elapsed(after, before);
 }
+
+void copy_real(const block_info_t *from_info, const double *from,
+  const block_info_t *to_info, double *to)
+{
+  const size_t n2 = from_info->dims[2];
+  const size_t n1 = from_info->dims[1];
+  const size_t n0 = from_info->dims[0];
+
+  for(size_t i2 = 0; i2 < n2; ++i2)
+  {
+    for(size_t i1 = 0; i1 < n1; ++i1)
+    {
+      memcpy(to, from, sizeof(double) * n0);
+      from += from_info->strides[1];
+      to += to_info->strides[1];
+    }
+
+    from += from_info->strides[2] - n1 * from_info->strides[1];
+    to += to_info->strides[2] - n1 * to_info->strides[1];
+  }
+}
