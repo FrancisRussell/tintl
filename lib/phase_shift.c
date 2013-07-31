@@ -325,41 +325,32 @@ interpolate_plan interpolate_plan_3d_phase_shift_interleaved(int n0, int n1, int
   }
 
   // Plan batch transforms
-  plan->dfts_interleaved_block[0] = fftw_plan_many_dft(1, &plan->props.dims[0],
-    plan->props.dims[2] * plan->props.dims[1],
-    data_in,  NULL, coarse_info.strides[0], coarse_info.strides[1],
-    data_out, NULL, coarse_info.strides[0], coarse_info.strides[1],
-    FFTW_FORWARD, flags);
+  fftw_iodim dim;
+  fftw_iodim how_many;
 
-  plan->dfts_interleaved_block[1] = fftw_plan_many_dft(1, &plan->props.dims[1],
-    plan->props.dims[0],
-    data_in, NULL,  coarse_info.strides[1], coarse_info.strides[0],
-    data_out, NULL, coarse_info.strides[1], coarse_info.strides[0],
-    FFTW_FORWARD, flags);
+  dim.n = plan->props.dims[0];
+  dim.is = dim.os = coarse_info.strides[0];
+  how_many.n = plan->props.dims[2] * plan->props.dims[1];
+  how_many.is = how_many.os = coarse_info.strides[1];
 
-  plan->dfts_interleaved_block[2] = fftw_plan_many_dft(1, &plan->props.dims[2],
-    plan->props.dims[0] * plan->props.dims[1],
-    data_in, NULL,  coarse_info.strides[2], coarse_info.strides[0],
-    data_out, NULL, coarse_info.strides[2], coarse_info.strides[0],
-    FFTW_FORWARD, flags);
+  plan->dfts_interleaved_block[0] = fftw_plan_guru_dft(1, &dim, 1, &how_many, data_in, data_out, FFTW_FORWARD, flags);
+  plan->idfts_interleaved_block[0] = fftw_plan_guru_dft(1, &dim, 1, &how_many, data_out, data_out, FFTW_BACKWARD, flags);
 
-  plan->idfts_interleaved_block[0] = fftw_plan_many_dft(1, &plan->props.dims[0],
-    plan->props.dims[2] * plan->props.dims[1],
-    data_out, NULL, coarse_info.strides[0], coarse_info.strides[1],
-    data_out, NULL, coarse_info.strides[0], coarse_info.strides[1],
-    FFTW_BACKWARD, flags);
+  dim.n = plan->props.dims[1];
+  dim.is = dim.os = coarse_info.strides[1];
+  how_many.n = plan->props.dims[0];
+  how_many.is = how_many.os = coarse_info.strides[0];
 
-  plan->idfts_interleaved_block[1] = fftw_plan_many_dft(1, &plan->props.dims[1],
-    plan->props.dims[0],
-    data_out, NULL, coarse_info.strides[1], coarse_info.strides[0],
-    data_out, NULL, coarse_info.strides[1], coarse_info.strides[0],
-    FFTW_BACKWARD, flags);
+  plan->dfts_interleaved_block[1] = fftw_plan_guru_dft(1, &dim, 1, &how_many, data_in, data_out, FFTW_FORWARD, flags);
+  plan->idfts_interleaved_block[1] = fftw_plan_guru_dft(1, &dim, 1, &how_many, data_out, data_out, FFTW_BACKWARD, flags);
 
-  plan->idfts_interleaved_block[2] = fftw_plan_many_dft(1, &plan->props.dims[2],
-    plan->props.dims[0] * plan->props.dims[1],
-    data_out, NULL, coarse_info.strides[2], coarse_info.strides[0],
-    data_out, NULL, coarse_info.strides[2], coarse_info.strides[0],
-    FFTW_BACKWARD, flags);
+  dim.n = plan->props.dims[2];
+  dim.is = dim.os = coarse_info.strides[2];
+  how_many.n = plan->props.dims[0] * plan->props.dims[1];
+  how_many.is = how_many.os = coarse_info.strides[0];
+
+  plan->dfts_interleaved_block[2] = fftw_plan_guru_dft(1, &dim, 1, &how_many, data_in, data_out, FFTW_FORWARD, flags);
+  plan->idfts_interleaved_block[2] = fftw_plan_guru_dft(1, &dim, 1, &how_many, data_out, data_out, FFTW_BACKWARD, flags);
 
   for(int dim=0; dim < 3; ++dim)
   {
