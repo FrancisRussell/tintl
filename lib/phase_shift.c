@@ -19,16 +19,25 @@
 static const int TIMING_ITERATIONS = 50;
 static const double pi = 3.14159265358979323846;
 
+typedef enum
+{
+  PENCIL_LEVEL,
+  BLOCK_LEVEL
+} granularity_t;
+
 typedef struct
 {
   interpolate_properties_t props;
+  granularity_t blocking_strategy[3];
   int stage[2][3];
 
   fftw_plan dfts_interleaved[3];
   fftw_plan dfts_interleaved_staged[3];
+  fftw_plan dfts_interleaved_block[3];
 
   fftw_plan idfts_interleaved[3];
   fftw_plan idfts_interleaved_staged[3];
+  fftw_plan idfts_interleaved_block[3];
 
   fftw_plan dfts_real[3];
   fftw_plan dfts_real_staged[3];
@@ -174,9 +183,11 @@ static void plan_common(phase_shift_plan plan, interpolation_t type, int n0, int
   {
     plan->dfts_interleaved[dim] = NULL;
     plan->dfts_interleaved_staged[dim] = NULL;
+    plan->dfts_interleaved_block[dim] = NULL;
 
     plan->idfts_interleaved[dim] = NULL;
     plan->idfts_interleaved_staged[dim] = NULL;
+    plan->idfts_interleaved_block[dim] = NULL;
 
     plan->dfts_real[dim] = NULL;
     plan->dfts_real_staged[dim] = NULL;
@@ -192,59 +203,8 @@ static void plan_common(phase_shift_plan plan, interpolation_t type, int n0, int
   }
 }
 
-interpolate_plan interpolate_plan_3d_phase_shift_interleaved(int n0, int n1, int n2, int flags)
+static void find_best_staging_interleaved(phase_shift_plan plan, fftw_complex *data_in, fftw_complex *data_out, fftw_complex *scratch)
 {
-  interpolate_plan wrapper = allocate_plan();
-  phase_shift_plan plan = (phase_shift_plan) wrapper->detail;
-
-  flags |= FFTW_MEASURE;
-  plan_common(plan, INTERLEAVED, n0, n1, n2, flags);
-
-  fftw_complex *const scratch = rs_alloc_complex(max_dimension(plan));
-
-  for(int dim=0; dim < 3; ++dim)
-  {
-    plan->dfts_interleaved_staged[dim] = fftw_plan_many_dft(1, &plan->props.dims[dim], 1,
-      scratch, NULL, 1, 0,
-      scratch, NULL, 1, 0,
-      FFTW_FORWARD, flags);
-
-    assert(plan->dfts_interleaved_staged[dim] != NULL);
-  }
-
-  for(int dim=0; dim < 3; ++dim)
-  {
-    plan->idfts_interleaved_staged[dim] = fftw_plan_many_dft(1, &plan->props.dims[dim], 1,
-      scratch, NULL, 1, 0,
-      scratch, NULL, 1, 0,
-      FFTW_BACKWARD, flags);
-
-    assert(plan->idfts_interleaved_staged[dim] != NULL);
-  }
-
-  const size_t block_size = num_elements(&plan->props);
-  fftw_complex *const data_in = rs_alloc_complex(block_size);
-  fftw_complex *const data_out = rs_alloc_complex(block_size);
-
-  memset(data_in, 0, block_size * sizeof(fftw_complex));
-  memset(data_out, 0, block_size * sizeof(fftw_complex));
-
-  for(int dim=0; dim < 3; ++dim)
-  {
-    plan->dfts_interleaved[dim] = fftw_plan_many_dft(1, &plan->props.dims[dim], 1,
-      data_in, NULL, plan->props.strides[dim], 0,
-      scratch, NULL, 1, 0,
-      FFTW_FORWARD, flags);
-    assert(plan->dfts_interleaved[dim] != NULL);
-
-    plan->idfts_interleaved[dim] = fftw_plan_many_dft(1, &plan->props.dims[dim], 1,
-      scratch, NULL, 1, 0,
-      data_out, NULL, plan->props.strides[dim], 0,
-      FFTW_BACKWARD, flags | FFTW_DESTROY_INPUT);
-
-    assert(plan->idfts_interleaved[dim] != NULL);
-  }
-
   void (*transform_function[2])(phase_shift_plan, int, fftw_complex*, fftw_complex*) = {
     transform_in_interleaved,
     transform_out_interleaved
@@ -276,10 +236,144 @@ interpolate_plan interpolate_plan_3d_phase_shift_interleaved(int n0, int n1, int
       plan->stage[phase][dim] = (staged_time < transform_time);
     }
   }
+}
+
+static void find_best_granularity_interleaved(phase_shift_plan plan, fftw_complex *in, fftw_complex* out, fftw_complex *scratch)
+{
+  typedef void (*rotation_function)(phase_shift_plan, fftw_complex*, fftw_complex*, fftw_complex*);
+  rotation_function rotation_functions[] =
+  {
+    expand_dim0,
+    expand_dim1,
+    expand_dim2
+  };
+
+  for(int dim = 0; dim < 3; ++dim)
+  {
+    ticks pencil_before, pencil_after, block_before, block_after;
+    pencil_before = getticks();
+    plan->blocking_strategy[dim] = PENCIL_LEVEL;
+    rotation_functions[dim](plan, in, out, scratch);
+    pencil_after = getticks();
+
+    block_before = getticks();
+    plan->blocking_strategy[dim] = BLOCK_LEVEL;
+    rotation_functions[dim](plan, in, out, scratch);
+    block_after = getticks();
+
+    const double pencil_time = elapsed(pencil_after, pencil_before);
+    const double block_time = elapsed(block_after, block_before);
+    plan->blocking_strategy[dim] = (pencil_time < block_time) ? PENCIL_LEVEL : BLOCK_LEVEL;
+  }
+}
+
+interpolate_plan interpolate_plan_3d_phase_shift_interleaved(int n0, int n1, int n2, int flags)
+{
+  interpolate_plan wrapper = allocate_plan();
+  phase_shift_plan plan = (phase_shift_plan) wrapper->detail;
+
+  flags |= FFTW_MEASURE;
+  plan_common(plan, INTERLEAVED, n0, n1, n2, flags);
+
+  fftw_complex *const scratch = rs_alloc_complex(max_dimension(plan));
+
+  // Plan staged transforms
+  for(int dim=0; dim < 3; ++dim)
+  {
+    plan->dfts_interleaved_staged[dim] = fftw_plan_many_dft(1, &plan->props.dims[dim], 1,
+      scratch, NULL, 1, 0,
+      scratch, NULL, 1, 0,
+      FFTW_FORWARD, flags);
+
+    assert(plan->dfts_interleaved_staged[dim] != NULL);
+  }
+
+  for(int dim=0; dim < 3; ++dim)
+  {
+    plan->idfts_interleaved_staged[dim] = fftw_plan_many_dft(1, &plan->props.dims[dim], 1,
+      scratch, NULL, 1, 0,
+      scratch, NULL, 1, 0,
+      FFTW_BACKWARD, flags);
+
+    assert(plan->idfts_interleaved_staged[dim] != NULL);
+  }
+
+  block_info_t coarse_info;
+  get_block_info_coarse(&plan->props, &coarse_info);
+  const size_t block_size = num_elements_block(&coarse_info);
+  fftw_complex *const data_in = rs_alloc_complex(block_size);
+  fftw_complex *const data_out = rs_alloc_complex(block_size);
+
+  memset(data_in, 0, block_size * sizeof(fftw_complex));
+  memset(data_out, 0, block_size * sizeof(fftw_complex));
+
+  // Plan unstaged transforms
+  for(int dim=0; dim < 3; ++dim)
+  {
+    plan->dfts_interleaved[dim] = fftw_plan_many_dft(1, &plan->props.dims[dim], 1,
+      data_in, NULL, plan->props.strides[dim], 0,
+      scratch, NULL, 1, 0,
+      FFTW_FORWARD, flags);
+    assert(plan->dfts_interleaved[dim] != NULL);
+
+    plan->idfts_interleaved[dim] = fftw_plan_many_dft(1, &plan->props.dims[dim], 1,
+      scratch, NULL, 1, 0,
+      data_out, NULL, plan->props.strides[dim], 0,
+      FFTW_BACKWARD, flags | FFTW_DESTROY_INPUT);
+
+    assert(plan->idfts_interleaved[dim] != NULL);
+  }
+
+  // Plan batch transforms
+  plan->dfts_interleaved_block[0] = fftw_plan_many_dft(1, &plan->props.dims[0],
+    plan->props.dims[2] * plan->props.dims[1],
+    data_in,  NULL, coarse_info.strides[0], coarse_info.strides[1],
+    data_out, NULL, coarse_info.strides[0], coarse_info.strides[1],
+    FFTW_FORWARD, flags);
+
+  plan->dfts_interleaved_block[1] = fftw_plan_many_dft(1, &plan->props.dims[1],
+    plan->props.dims[0],
+    data_in, NULL,  coarse_info.strides[1], coarse_info.strides[0],
+    data_out, NULL, coarse_info.strides[1], coarse_info.strides[0],
+    FFTW_FORWARD, flags);
+
+  plan->dfts_interleaved_block[2] = fftw_plan_many_dft(1, &plan->props.dims[2],
+    plan->props.dims[0] * plan->props.dims[1],
+    data_in, NULL,  coarse_info.strides[2], coarse_info.strides[0],
+    data_out, NULL, coarse_info.strides[2], coarse_info.strides[0],
+    FFTW_FORWARD, flags);
+
+  plan->idfts_interleaved_block[0] = fftw_plan_many_dft(1, &plan->props.dims[0],
+    plan->props.dims[2] * plan->props.dims[1],
+    data_out, NULL, coarse_info.strides[0], coarse_info.strides[1],
+    data_out, NULL, coarse_info.strides[0], coarse_info.strides[1],
+    FFTW_BACKWARD, flags);
+
+  plan->idfts_interleaved_block[1] = fftw_plan_many_dft(1, &plan->props.dims[1],
+    plan->props.dims[0],
+    data_out, NULL, coarse_info.strides[1], coarse_info.strides[0],
+    data_out, NULL, coarse_info.strides[1], coarse_info.strides[0],
+    FFTW_BACKWARD, flags);
+
+  plan->idfts_interleaved_block[2] = fftw_plan_many_dft(1, &plan->props.dims[2],
+    plan->props.dims[0] * plan->props.dims[1],
+    data_out, NULL, coarse_info.strides[2], coarse_info.strides[0],
+    data_out, NULL, coarse_info.strides[2], coarse_info.strides[0],
+    FFTW_BACKWARD, flags);
+
+  for(int dim=0; dim < 3; ++dim)
+  {
+    assert(plan->dfts_interleaved_block[dim] != NULL);
+    assert(plan->idfts_interleaved_block[dim] != NULL);
+  }
+
+  find_best_staging_interleaved(plan, data_in, data_out, scratch);
+  find_best_granularity_interleaved(plan, data_in, data_out, scratch);
 
   rs_free(scratch);
   rs_free(data_in);
   rs_free(data_out);
+
   return wrapper;
 }
 
@@ -326,12 +420,14 @@ interpolate_plan interpolate_plan_3d_phase_shift_split(int n0, int n1, int n2, i
   double *const real_scratch_2 = rs_alloc_real(block_size);
   memset(real_scratch_2, 0, block_size * sizeof(double));
 
-  void (*transform_function[2])(phase_shift_plan, int, const block_info_t*, double*, double*, fftw_complex*) = {
+  void (*transform_function[2])(phase_shift_plan, int, const block_info_t*, double*, double*, fftw_complex*) =
+  {
     transform_in_real,
     transform_out_real
   };
 
-  void (*staged_function[2])(phase_shift_plan, int, const block_info_t*, double*, double*, fftw_complex*) = {
+  void (*staged_function[2])(phase_shift_plan, int, const block_info_t*, double*, double*, fftw_complex*) =
+  {
     stage_in_real,
     stage_out_real
   };
@@ -379,9 +475,11 @@ static void phase_shift_interpolate_destroy_detail(void *detail)
   {
     fftw_destroy_plan_maybe_null(plan->dfts_interleaved[dim]);
     fftw_destroy_plan_maybe_null(plan->dfts_interleaved_staged[dim]);
+    fftw_destroy_plan_maybe_null(plan->dfts_interleaved_block[dim]);
 
     fftw_destroy_plan_maybe_null(plan->idfts_interleaved[dim]);
     fftw_destroy_plan_maybe_null(plan->idfts_interleaved_staged[dim]);
+    fftw_destroy_plan_maybe_null(plan->idfts_interleaved_block[dim]);
 
     fftw_destroy_plan_maybe_null(plan->dfts_real[dim]);
     fftw_destroy_plan_maybe_null(plan->dfts_real_staged[dim]);
@@ -653,27 +751,97 @@ void phase_shift_interpolate_print_timings(const void *detail)
   printf("Gather: %f\n", time_point_delta(&plan->before_gather, &plan->end));
 }
 
+static inline void rotate_dim0(phase_shift_plan plan, fftw_complex *data)
+{
+  const size_t n0 = plan->props.dims[0];
+  const size_t n1 = plan->props.dims[1];
+  const size_t n2 = plan->props.dims[2];
+
+  const size_t s1 = plan->props.strides[1];
+  const size_t s2 = plan->props.strides[2];
+
+  for(size_t i2=0; i2 < n2; ++i2)
+  {
+    for(size_t i1=0; i1 < n1; ++i1)
+    {
+      const size_t offset = i1*s1 + i2*s2;
+      pointwise_multiply_complex(n0, data + offset, plan->rotations[0]);
+    }
+  }
+}
+
+static inline void rotate_dim1(phase_shift_plan plan, fftw_complex *data)
+{
+  const size_t n0 = plan->props.dims[0];
+  const size_t n1 = plan->props.dims[1];
+  const size_t n2 = plan->props.dims[2];
+
+  const size_t s1 = plan->props.strides[1];
+  const size_t s2 = plan->props.strides[2];
+
+  for(size_t i2=0; i2 < n2; ++i2)
+  {
+    for(size_t i1=0; i1 < n1; ++i1)
+    {
+      const size_t offset = i1*s1 + i2*s2;
+
+      for(size_t i0=0; i0 < n0; ++i0)
+        (data + offset)[i0] *= plan->rotations[1][i1];
+    }
+  }
+}
+
+static inline void rotate_dim2(phase_shift_plan plan, fftw_complex *data)
+{
+  const size_t n0 = plan->props.dims[0];
+  const size_t n1 = plan->props.dims[1];
+  const size_t n2 = plan->props.dims[2];
+
+  const size_t s1 = plan->props.strides[1];
+  const size_t s2 = plan->props.strides[2];
+
+  for(size_t i2=0; i2 < n2; ++i2)
+  {
+    for(size_t i1=0; i1 < n1; ++i1)
+    {
+      const size_t offset = i1*s1 + i2*s2;
+
+      for(size_t i0=0; i0 < n0; ++i0)
+        (data + offset)[i0] *= plan->rotations[2][i2];
+    }
+  }
+}
+
 static void expand_dim0(phase_shift_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch)
 {
   static const int dim = 0;
-  for(size_t i2=0; i2 < plan->props.dims[2]; ++i2)
+  if (plan->blocking_strategy[0] == PENCIL_LEVEL)
   {
-    for(size_t i1=0; i1 < plan->props.dims[1]; ++i1)
+    for(size_t i2=0; i2 < plan->props.dims[2]; ++i2)
     {
-      const size_t offset = i1*plan->props.strides[1] + i2*plan->props.strides[2];
+      for(size_t i1=0; i1 < plan->props.dims[1]; ++i1)
+      {
+        const size_t offset = i1*plan->props.strides[1] + i2*plan->props.strides[2];
 
-      if (plan->stage[0][dim])
-        stage_in_interleaved(plan, dim, in + offset, scratch);
-      else
-        transform_in_interleaved(plan, dim, in + offset, scratch);
+        if (plan->stage[0][dim])
+          stage_in_interleaved(plan, dim, in + offset, scratch);
+        else
+          transform_in_interleaved(plan, dim, in + offset, scratch);
 
-        pointwise_multiply_complex(plan->props.dims[dim], scratch, plan->rotations[dim]);
+          pointwise_multiply_complex(plan->props.dims[dim], scratch, plan->rotations[dim]);
 
-      if (plan->stage[1][dim])
-        stage_out_interleaved(plan, dim, out + offset, scratch);
-      else
-        transform_out_interleaved(plan, dim, out + offset, scratch);
+        if (plan->stage[1][dim])
+          stage_out_interleaved(plan, dim, out + offset, scratch);
+        else
+          transform_out_interleaved(plan, dim, out + offset, scratch);
+      }
     }
+  }
+  else
+  {
+    fftw_execute_dft(plan->dfts_interleaved_block[dim], in, out);
+    rotate_dim0(plan, out);
+    fftw_execute_dft(plan->idfts_interleaved_block[dim], out, out);
   }
 }
 
@@ -706,24 +874,40 @@ static void expand_dim0_real(phase_shift_plan plan, const block_info_t *block_in
 static void expand_dim1(phase_shift_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch)
 {
   static const int dim = 1;
-  for(size_t i2=0; i2 < plan->props.dims[2]; ++i2)
+  if (plan->blocking_strategy[1] == PENCIL_LEVEL)
   {
-    for(size_t i0=0; i0 < plan->props.dims[0]; ++i0)
+    for(size_t i2=0; i2 < plan->props.dims[2]; ++i2)
     {
-      const size_t offset = i0 + i2*plan->props.strides[2];
+      for(size_t i0=0; i0 < plan->props.dims[0]; ++i0)
+      {
+        const size_t offset = i0 + i2*plan->props.strides[2];
 
-      if (plan->stage[0][dim])
-        stage_in_interleaved(plan, dim, in + offset, scratch);
-      else
-        transform_in_interleaved(plan, dim, in + offset, scratch);
+        if (plan->stage[0][dim])
+          stage_in_interleaved(plan, dim, in + offset, scratch);
+        else
+          transform_in_interleaved(plan, dim, in + offset, scratch);
 
-        pointwise_multiply_complex(plan->props.dims[dim], scratch, plan->rotations[dim]);
+          pointwise_multiply_complex(plan->props.dims[dim], scratch, plan->rotations[dim]);
 
-      if (plan->stage[1][dim])
-        stage_out_interleaved(plan, dim, out + offset, scratch);
-      else
-        transform_out_interleaved(plan, dim, out + offset, scratch);
+        if (plan->stage[1][dim])
+          stage_out_interleaved(plan, dim, out + offset, scratch);
+        else
+          transform_out_interleaved(plan, dim, out + offset, scratch);
+      }
     }
+  }
+  else
+  {
+    const size_t n2 = plan->props.dims[2];
+    const size_t s2 = plan->props.strides[2];
+
+    for(size_t i2=0; i2 < n2; ++i2)
+      fftw_execute_dft(plan->dfts_interleaved_block[dim], in + i2 * s2, out + i2 * s2);
+
+    rotate_dim1(plan, out);
+
+    for(size_t i2=0; i2 < n2; ++i2)
+      fftw_execute_dft(plan->idfts_interleaved_block[dim], out + i2 * s2, out + i2 * s2);
   }
 }
 
@@ -731,6 +915,7 @@ static void expand_dim1_real(phase_shift_plan plan, const block_info_t *block_in
   double *in, double *out, double *real_scratch, fftw_complex *complex_scratch)
 {
   static const int dim = 1;
+
   for(size_t i2=0; i2 < block_info->dims[2]; ++i2)
   {
     for(size_t i0=0; i0 < block_info->dims[0]; ++i0)
@@ -754,24 +939,34 @@ static void expand_dim1_real(phase_shift_plan plan, const block_info_t *block_in
 static void expand_dim2(phase_shift_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch)
 {
   static const int dim = 2;
-  for(size_t i1=0; i1 < plan->props.dims[1]; ++i1)
+
+  if (plan->blocking_strategy[dim] == PENCIL_LEVEL)
   {
-    for(size_t i0=0; i0 < plan->props.dims[0]; ++i0)
+    for(size_t i1=0; i1 < plan->props.dims[1]; ++i1)
     {
-      const size_t offset = i1*plan->props.strides[1] + i0;
+      for(size_t i0=0; i0 < plan->props.dims[0]; ++i0)
+      {
+        const size_t offset = i1*plan->props.strides[1] + i0;
 
-      if (plan->stage[0][dim])
-        stage_in_interleaved(plan, dim, in + offset, scratch);
-      else
-        transform_in_interleaved(plan, dim, in + offset, scratch);
+        if (plan->stage[0][dim])
+          stage_in_interleaved(plan, dim, in + offset, scratch);
+        else
+          transform_in_interleaved(plan, dim, in + offset, scratch);
 
-        pointwise_multiply_complex(plan->props.dims[dim], scratch, plan->rotations[dim]);
+          pointwise_multiply_complex(plan->props.dims[dim], scratch, plan->rotations[dim]);
 
-      if (plan->stage[1][dim])
-        stage_out_interleaved(plan, dim, out + offset, scratch);
-      else
-        transform_out_interleaved(plan, dim, out + offset, scratch);
+        if (plan->stage[1][dim])
+          stage_out_interleaved(plan, dim, out + offset, scratch);
+        else
+          transform_out_interleaved(plan, dim, out + offset, scratch);
+      }
     }
+  }
+  else
+  {
+    fftw_execute_dft(plan->dfts_interleaved_block[dim], in, out);
+    rotate_dim2(plan, out);
+    fftw_execute_dft(plan->idfts_interleaved_block[dim], out, out);
   }
 }
 
