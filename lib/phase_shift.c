@@ -710,7 +710,7 @@ static void interpolate_real_common(const phase_shift_plan plan, double *blocks[
 static void phase_shift_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout)
 {
   phase_shift_plan plan = (phase_shift_plan) detail;
-  assert(SPLIT == plan->props.type);
+  assert(SPLIT == plan->props.type || SPLIT_PRODUCT == plan->props.type);
   const size_t block_size = num_elements(&plan->props);
 
   if (plan->packing_strategy == SEPARATE)
