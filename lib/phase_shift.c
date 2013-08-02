@@ -715,7 +715,6 @@ static void phase_shift_interpolate_execute_split(const void *detail, double *ri
 
   if (plan->packing_strategy == SEPARATE)
   {
-
     const size_t rounded_block_size = round_align(block_size);
     double *const block_data = rs_alloc_real(2 * 7 * rounded_block_size);
     double *blocks[2][8];
@@ -747,6 +746,8 @@ static void phase_shift_interpolate_execute_split(const void *detail, double *ri
     interleave_real(block_size, (double*) in, rin, iin);
     phase_shift_interpolate_execute_interleaved(plan, in, out);
     deinterleave_real(8 * block_size, (const double*) out, rout, iout);
+    rs_free(in);
+    rs_free(out);
   }
   else
   {
