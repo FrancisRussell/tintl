@@ -25,10 +25,17 @@ typedef enum
   BLOCK_LEVEL
 } granularity_t;
 
+typedef enum
+{
+  PACKED,
+  SEPARATE
+} packing_strategy_t;
+
 typedef struct
 {
   interpolate_properties_t props;
   granularity_t blocking_strategy[3];
+  packing_strategy_t packing_strategy;
   int stage[2][3];
 
   fftw_plan dfts_interleaved[3];
@@ -174,35 +181,6 @@ static size_t max_dimension(const phase_shift_plan plan)
   return max_dim;
 }
 
-static void plan_common(phase_shift_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)
-{
-  flags |= FFTW_MEASURE;
-  populate_properties(&plan->props, type, n0, n1, n2);
-
-  for(int dim = 0; dim < 3; ++dim)
-  {
-    plan->dfts_interleaved[dim] = NULL;
-    plan->dfts_interleaved_staged[dim] = NULL;
-    plan->dfts_interleaved_block[dim] = NULL;
-
-    plan->idfts_interleaved[dim] = NULL;
-    plan->idfts_interleaved_staged[dim] = NULL;
-    plan->idfts_interleaved_block[dim] = NULL;
-
-    plan->dfts_real[dim] = NULL;
-    plan->dfts_real_staged[dim] = NULL;
-
-    plan->idfts_real[dim] = NULL;
-    plan->idfts_real_staged[dim] = NULL;
-  }
-
-  for(int dim = 0; dim < 3; ++dim)
-  {
-    plan->rotations[dim] = rs_alloc_complex(plan->props.dims[dim]);
-    build_rotation(plan->props.dims[dim], plan->rotations[dim]);
-  }
-}
-
 static void find_best_staging_interleaved(phase_shift_plan plan, fftw_complex *data_in, fftw_complex *data_out, fftw_complex *scratch)
 {
   void (*transform_function[2])(phase_shift_plan, int, fftw_complex*, fftw_complex*) = {
@@ -238,6 +216,58 @@ static void find_best_staging_interleaved(phase_shift_plan plan, fftw_complex *d
   }
 }
 
+static void find_best_staging_split(phase_shift_plan plan, const block_info_t *block_info, double *in, double *out, fftw_complex *scratch)
+{
+  void (*transform_function[2])(phase_shift_plan, int, const block_info_t*, double*, double*, fftw_complex*) =
+  {
+    transform_in_real,
+    transform_out_real
+  };
+
+  void (*staged_function[2])(phase_shift_plan, int, const block_info_t*, double*, double*, fftw_complex*) =
+  {
+    stage_in_real,
+    stage_out_real
+  };
+
+  ticks before, after;
+
+  for(int phase = 0; phase < 2; ++phase)
+  {
+    for(int dim=0; dim< 3; ++dim)
+    {
+      /* We cannot satisfy FFTW's alignment requirements for applying the non-staged transforms
+       * since we often end up with pencils starting on 8 byte aligned boundaries.
+
+      before = getticks();
+      for(int repeat = 0; repeat < TIMING_ITERATIONS; ++repeat)
+        transform_function[phase](plan, dim, block_info, in, out, scratch);
+      after = getticks();
+      const double transform_time = elapsed(after, before);
+
+      before = getticks();
+      for(int repeat = 0; repeat < TIMING_ITERATIONS; ++repeat)
+        staged_function[phase](plan, dim, block_info, in, out, scratch);
+      after = getticks();
+      const double staged_time = elapsed(after, before);
+
+      plan->stage[phase][dim] = (staged_time < transform_time);
+      */
+      plan->stage[phase][dim] = 1;
+    }
+  }
+}
+
+static void find_best_packing_strategy_split(interpolate_plan wrapper)
+{
+  phase_shift_plan plan = (phase_shift_plan) wrapper->detail;
+  plan->packing_strategy = SEPARATE;
+  const double separate_time = time_interpolate_split(wrapper, plan->props.dims);
+  plan->packing_strategy = PACKED;
+  const double packed_time = time_interpolate_split(wrapper, plan->props.dims);
+  plan->packing_strategy = (separate_time < packed_time) ? SEPARATE : PACKED;
+}
+
 static void find_best_granularity_interleaved(phase_shift_plan plan, fftw_complex *in, fftw_complex* out, fftw_complex *scratch)
 {
   typedef void (*rotation_function)(phase_shift_plan, fftw_complex*, fftw_complex*, fftw_complex*);
@@ -267,13 +297,33 @@ static void find_best_granularity_interleaved(phase_shift_plan plan, fftw_comple
   }
 }
 
-interpolate_plan interpolate_plan_3d_phase_shift_interleaved(int n0, int n1, int n2, int flags)
+static void plan_common(phase_shift_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)
 {
-  interpolate_plan wrapper = allocate_plan();
-  phase_shift_plan plan = (phase_shift_plan) wrapper->detail;
-
   flags |= FFTW_MEASURE;
-  plan_common(plan, INTERLEAVED, n0, n1, n2, flags);
+  populate_properties(&plan->props, type, n0, n1, n2);
+
+  for(int dim = 0; dim < 3; ++dim)
+  {
+    plan->dfts_interleaved[dim] = NULL;
+    plan->dfts_interleaved_staged[dim] = NULL;
+    plan->dfts_interleaved_block[dim] = NULL;
+
+    plan->idfts_interleaved[dim] = NULL;
+    plan->idfts_interleaved_staged[dim] = NULL;
+    plan->idfts_interleaved_block[dim] = NULL;
+
+    plan->dfts_real[dim] = NULL;
+    plan->dfts_real_staged[dim] = NULL;
+
+    plan->idfts_real[dim] = NULL;
+    plan->idfts_real_staged[dim] = NULL;
+  }
+
+  for(int dim = 0; dim < 3; ++dim)
+  {
+    plan->rotations[dim] = rs_alloc_complex(plan->props.dims[dim]);
+    build_rotation(plan->props.dims[dim], plan->rotations[dim]);
+  }
 
   fftw_complex *const scratch = rs_alloc_complex(max_dimension(plan));
 
@@ -364,6 +414,16 @@ interpolate_plan interpolate_plan_3d_phase_shift_interleaved(int n0, int n1, int
   rs_free(scratch);
   rs_free(data_in);
   rs_free(data_out);
+}
+
+interpolate_plan interpolate_plan_3d_phase_shift_interleaved(int n0, int n1, int n2, int flags)
+{
+  interpolate_plan wrapper = allocate_plan();
+  phase_shift_plan plan = (phase_shift_plan) wrapper->detail;
+
+  flags |= FFTW_MEASURE;
+  plan_common(plan, INTERLEAVED, n0, n1, n2, flags);
+  plan->packing_strategy = PACKED;
 
   return wrapper;
 }
@@ -381,6 +441,8 @@ interpolate_plan interpolate_plan_3d_phase_shift_split(int n0, int n1, int n2, i
   const size_t block_size = num_elements_block(&coarse_info);
 
   double *const real_scratch = rs_alloc_real(block_size);
+  memset(real_scratch, 0, sizeof(double) * block_size);
+
   fftw_complex *const scratch = rs_alloc_complex(max_dimension(plan) / 2 + 1);
 
   for(int dim=0; dim < 3; ++dim)
@@ -389,6 +451,16 @@ interpolate_plan interpolate_plan_3d_phase_shift_split(int n0, int n1, int n2, i
       real_scratch, scratch, flags | FFTW_DESTROY_INPUT);
     assert(plan->dfts_real_staged[dim] != NULL);
 
+    plan->idfts_real_staged[dim] = fftw_plan_dft_c2r(1, &plan->props.dims[dim],
+      scratch, real_scratch,
+      flags | FFTW_DESTROY_INPUT);
+    assert(plan->idfts_real_staged[dim] != NULL);
+
+    /*
+     * We cannot currently perform non-staged real DFTs and still satisfy FFTW's
+     * alignment requirements since we need to manually stride the dimension-1
+     * DFT through the (double) input array.
+
     // This is the only transform that must not modify its input.
     plan->dfts_real[dim] = fftw_plan_many_dft_r2c(1, &plan->props.dims[dim], 1,
         real_scratch, NULL, coarse_info.strides[dim], 0,
@@ -396,54 +468,20 @@ interpolate_plan interpolate_plan_3d_phase_shift_split(int n0, int n1, int n2, i
         flags);
     assert(plan->dfts_real[dim] != NULL);
 
-    plan->idfts_real_staged[dim] = fftw_plan_dft_c2r(1, &plan->props.dims[dim],
-      scratch, real_scratch,
-      flags | FFTW_DESTROY_INPUT);
-    assert(plan->idfts_real_staged[dim] != NULL);
-
     plan->idfts_real[dim] = fftw_plan_many_dft_c2r(1, &plan->props.dims[dim], 1,
         scratch,       NULL, 1,                        0,
         real_scratch,  NULL, coarse_info.strides[dim], 0,
         flags | FFTW_DESTROY_INPUT);
     assert(plan->dfts_real[dim] != NULL);
+
+    */
   }
 
   double *const real_scratch_2 = rs_alloc_real(block_size);
-  memset(real_scratch_2, 0, block_size * sizeof(double));
+  memset(real_scratch_2, 0, sizeof(double) * block_size);
 
-  void (*transform_function[2])(phase_shift_plan, int, const block_info_t*, double*, double*, fftw_complex*) =
-  {
-    transform_in_real,
-    transform_out_real
-  };
-
-  void (*staged_function[2])(phase_shift_plan, int, const block_info_t*, double*, double*, fftw_complex*) =
-  {
-    stage_in_real,
-    stage_out_real
-  };
-
-  ticks before, after;
-
-  for(int phase = 0; phase < 2; ++phase)
-  {
-    for(int dim=0; dim< 3; ++dim)
-    {
-      before = getticks();
-      for(int repeat = 0; repeat < TIMING_ITERATIONS; ++repeat)
-        transform_function[phase](plan, dim, &coarse_info, real_scratch, real_scratch_2, scratch);
-      after = getticks();
-      const double transform_time = elapsed(after, before);
-
-      before = getticks();
-      for(int repeat = 0; repeat < TIMING_ITERATIONS; ++repeat)
-        staged_function[phase](plan, dim, &coarse_info, real_scratch, real_scratch_2, scratch);
-      after = getticks();
-      const double staged_time = elapsed(after, before);
-
-      plan->stage[phase][dim] = (staged_time < transform_time);
-    }
-  }
+  find_best_staging_split(plan, &coarse_info, real_scratch, real_scratch_2, scratch);
+  find_best_packing_strategy_split(wrapper);
 
   rs_free(scratch);
   rs_free(real_scratch);
@@ -613,7 +651,7 @@ static void gather_blocks_real(phase_shift_plan plan, double *blocks[8], double 
 static void phase_shift_interpolate_execute_interleaved(const void *detail, fftw_complex *in, fftw_complex *out)
 {
   phase_shift_plan plan = (phase_shift_plan) detail;
-  assert(INTERLEAVED == plan->props.type);
+  assert(plan->packing_strategy == PACKED);
 
   const size_t block_size = num_elements(&plan->props);
 
@@ -673,64 +711,78 @@ static void phase_shift_interpolate_execute_split(const void *detail, double *ri
 {
   phase_shift_plan plan = (phase_shift_plan) detail;
   assert(SPLIT == plan->props.type);
-
   const size_t block_size = num_elements(&plan->props);
-  const size_t rounded_block_size = round_align(block_size);
-  double *const block_data = rs_alloc_real(2 * 7 * rounded_block_size);
-  double *blocks[2][8];
 
-  blocks[0][0] = rin;
-  blocks[1][0] = iin;
-
-  for(int block = 1; block < 8; ++block)
+  if (plan->packing_strategy == SEPARATE)
   {
-    blocks[0][block] = block_data + (0 + block - 1) * rounded_block_size;
-    blocks[1][block] = block_data + (7 + block - 1) * rounded_block_size;
+
+    const size_t rounded_block_size = round_align(block_size);
+    double *const block_data = rs_alloc_real(2 * 7 * rounded_block_size);
+    double *blocks[2][8];
+
+    blocks[0][0] = rin;
+    blocks[1][0] = iin;
+
+    for(int block = 1; block < 8; ++block)
+    {
+      blocks[0][block] = block_data + (0 + block - 1) * rounded_block_size;
+      blocks[1][block] = block_data + (7 + block - 1) * rounded_block_size;
+    }
+
+    interpolate_real_common(plan, blocks[0]);
+    interpolate_real_common(plan, blocks[1]);
+
+    time_point_save(&plan->before_gather);
+
+    gather_blocks_real(plan, blocks[0], rout);
+    gather_blocks_real(plan, blocks[1], iout);
+    time_point_save(&plan->end);
+
+    rs_free(block_data);
   }
-
-  interpolate_real_common(plan, blocks[0]);
-  interpolate_real_common(plan, blocks[1]);
-
-  time_point_save(&plan->before_gather);
-
-  gather_blocks_real(plan, blocks[0], rout);
-  gather_blocks_real(plan, blocks[1], iout);
-  time_point_save(&plan->end);
-
-  rs_free(block_data);
+  else if (plan->packing_strategy == PACKED)
+  {
+    fftw_complex *const in = rs_alloc_complex(block_size);
+    fftw_complex *const out = rs_alloc_complex(8 * block_size);
+    interleave_real(block_size, (double*) in, rin, iin);
+    phase_shift_interpolate_execute_interleaved(plan, in, out);
+    deinterleave_real(8 * block_size, (const double*) out, rout, iout);
+  }
+  else
+  {
+    assert(0 && "Unknown packing strategy");
+  }
 }
 
 void phase_shift_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out)
 {
   phase_shift_plan plan = (phase_shift_plan) detail;
   assert(SPLIT_PRODUCT == plan->props.type);
-
   const size_t block_size = num_elements(&plan->props);
-  const size_t rounded_block_size = round_align(block_size);
-  double *const block_data = rs_alloc_real(2 * 7 * rounded_block_size);
-  double *blocks[2][8];
 
-  blocks[0][0] = rin;
-  blocks[1][0] = iin;
-
-  for(int block = 1; block < 8; ++block)
+  if (plan->packing_strategy == PACKED)
   {
-    blocks[0][block] = block_data + (2 * (block - 1)) * rounded_block_size;
-    blocks[1][block] = block_data + (2 * (block - 1) + 1) * rounded_block_size;
+    fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
+    fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
+
+    interleave_real(block_size, (double*) scratch_coarse, rin, iin);
+    phase_shift_interpolate_execute_interleaved(detail, scratch_coarse, scratch_fine);
+    complex_to_product(8 * block_size, scratch_fine, out);
+
+    rs_free(scratch_coarse);
+    rs_free(scratch_fine);
   }
-
-  interpolate_real_common(plan, blocks[0]);
-  interpolate_real_common(plan, blocks[1]);
-
-  time_point_save(&plan->before_gather);
-
-  for(int block = 0; block < 8; ++block)
-    pointwise_multiply_real(block_size, blocks[0][block], blocks[1][block]);
-
-  gather_blocks_real(plan, blocks[0], out);
-  time_point_save(&plan->end);
-
-  rs_free(block_data);
+  else if (plan->packing_strategy == SEPARATE)
+  {
+    double *const scratch_fine = rs_alloc_real(8 * block_size);
+    phase_shift_interpolate_execute_split(detail, rin, iin, out, scratch_fine);
+    pointwise_multiply_real(8 * block_size, out, scratch_fine);
+    rs_free(scratch_fine);
+  }
+  else
+  {
+    assert(0 && "Unknown packing strategy");
+  }
 }
 
 void phase_shift_interpolate_print_timings(const void *detail)
