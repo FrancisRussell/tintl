@@ -7,6 +7,7 @@
 
 typedef struct
 {
+  int ref_cnt;
   void *detail;
   const char *(*get_name)(const void *detail);
   void (*execute_interleaved)(const void *detail, fftw_complex *in, fftw_complex *out);

@@ -57,7 +57,13 @@ static const char *get_name(const void *detail)
 static interpolate_plan allocate_plan(void)
 {
   interpolate_plan holder = malloc(sizeof(interpolate_plan_s));
+  assert(holder != NULL);
+
+  holder->ref_cnt = 1;
+
   holder->detail = malloc(sizeof(naive_plan_s));
+  assert(holder->detail != NULL);
+
   holder->get_name = get_name;
   holder->execute_interleaved = naive_interpolate_execute_interleaved;
   holder->execute_split = naive_interpolate_execute_split;

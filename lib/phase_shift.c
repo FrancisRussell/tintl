@@ -112,7 +112,13 @@ static const char *get_name(const void *detail)
 static interpolate_plan allocate_plan(void)
 {
   interpolate_plan holder = malloc(sizeof(interpolate_plan_s));
+  assert(holder != NULL);
+
+  holder->ref_cnt = 1;
   holder->detail = malloc(sizeof(phase_shift_plan_s));
+
+  assert(holder->detail != NULL);
+
   holder->get_name = get_name;
   holder->execute_interleaved = phase_shift_interpolate_execute_interleaved;
   holder->execute_split = phase_shift_interpolate_execute_split;
