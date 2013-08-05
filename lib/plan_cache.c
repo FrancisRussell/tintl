@@ -1,5 +1,6 @@
 #include "plan_cache.h"
 #include <string.h>
+#include <stdlib.h>
 
 typedef struct plan_cache_entry_s
 {
