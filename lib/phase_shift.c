@@ -580,17 +580,36 @@ static void interleave_complex(size_t size, fftw_complex *out, const fftw_comple
 
 static void interleave_split(size_t size, double *rout, double *iout, const fftw_complex *even, const fftw_complex *odd)
 {
-  for(size_t i=0; i<size; ++i)
+#ifdef __SSE2__
+  if ((((uintptr_t) rout | (uintptr_t) iout | (uintptr_t) even | (uintptr_t) odd ) & SSE_ALIGN_MASK) == 0)
   {
-    const fftw_complex even_e = even[i];
-    const fftw_complex odd_e = odd[i];
-
-    rout[i * 2] = *((const double*) &even_e);
-    rout[i * 2 + 1] = *((const double*) &odd_e);
-
-    iout[i * 2] = *(((const double*) &even_e) + 1);
-    iout[i * 2 + 1] = *(((const double*) &odd_e) + 1);
+    for(size_t i=0; i<size; ++i)
+    {
+      __m128d even_vec = _mm_load_pd((const double*)(even + i));
+      __m128d odd_vec = _mm_load_pd((const double*)(odd + i));
+      __m128d real_out = _mm_shuffle_pd(even_vec, odd_vec, 0);
+      __m128d imag_out = _mm_shuffle_pd(even_vec, odd_vec, 3);
+      _mm_store_pd((double*)(rout + i * 2), real_out);
+      _mm_store_pd((double*)(iout + i * 2), imag_out);
+    }
   }
+  else
+  {
+#endif
+    for(size_t i=0; i<size; ++i)
+    {
+      const fftw_complex even_e = even[i];
+      const fftw_complex odd_e = odd[i];
+
+      rout[i * 2] = *((const double*) &even_e);
+      rout[i * 2 + 1] = *((const double*) &odd_e);
+
+      iout[i * 2] = *(((const double*) &even_e) + 1);
+      iout[i * 2 + 1] = *(((const double*) &odd_e) + 1);
+    }
+#ifdef __SSE2__
+  }
+#endif
 }
 
 static void gather_complex(size_t size, size_t stride, const fftw_complex *in, fftw_complex *out)
