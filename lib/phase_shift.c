@@ -97,6 +97,7 @@ static void scatter_split(size_t size, size_t stride, double *rout, double *iout
 
 static void gather_blocks_real(phase_shift_plan plan, double *blocks[8], double *out);
 static void gather_blocks_complex(phase_shift_plan plan, fftw_complex *blocks[8], fftw_complex *out);
+static void gather_blocks_split(phase_shift_plan plan, fftw_complex *blocks[8], double *rout, double *iout);
 
 static void interpolate_real_common(const phase_shift_plan plan, double *blocks[8]);
 static void build_rotation(size_t size, fftw_complex *out);
@@ -612,6 +613,38 @@ static void interleave_split(size_t size, double *rout, double *iout, const fftw
 #endif
 }
 
+static void interleave_product(size_t size, double *out, const fftw_complex *even, const fftw_complex *odd)
+{
+#ifdef __SSE2__
+  if ((((uintptr_t) out | (uintptr_t) even | (uintptr_t) odd ) & SSE_ALIGN_MASK) == 0)
+  {
+    for(size_t i=0; i<size; ++i)
+    {
+      __m128d even_vec = _mm_load_pd((const double*)(even + i));
+      __m128d odd_vec = _mm_load_pd((const double*)(odd + i));
+      __m128d real_parts = _mm_shuffle_pd(even_vec, odd_vec, 0);
+      __m128d imag_parts = _mm_shuffle_pd(even_vec, odd_vec, 3);
+      __m128d prod = _mm_mul_pd(real_parts, imag_parts);
+      _mm_store_pd(out + i * 2, prod);
+    }
+  }
+  else
+  {
+#endif
+    for(size_t i=0; i<size; ++i)
+    {
+      const fftw_complex even_e = even[i];
+      const fftw_complex odd_e = odd[i];
+
+      out[i * 2] = *((const double*) &even_e) * *(((const double*) &even_e) + 1);
+      out[i * 2 + 1] = *((const double*) &odd_e) * *(((const double*) &odd_e) + 1);
+    }
+#ifdef __SSE2__
+  }
+#endif
+}
+
+
 static void gather_complex(size_t size, size_t stride, const fftw_complex *in, fftw_complex *out)
 {
   for(size_t i = 0; i < size; ++i)
@@ -700,6 +733,21 @@ static void gather_blocks_split(phase_shift_plan plan, fftw_complex *blocks[8], 
       double *row_rout = &rout[i2 * plan->props.strides[2] * 4 + i1 * plan->props.strides[1] * 2];
       double *row_iout = &iout[i2 * plan->props.strides[2] * 4 + i1 * plan->props.strides[1] * 2];
       interleave_split(plan->props.dims[0], row_rout, row_iout, even, odd);
+    }
+  }
+}
+
+static void gather_blocks_product(phase_shift_plan plan, fftw_complex *blocks[8], double *out)
+{
+  for(size_t i2=0; i2 < plan->props.dims[2] * 2; ++i2)
+  {
+    for(size_t i1=0; i1 < plan->props.dims[1] * 2; ++i1)
+    {
+      const size_t in_offset = (i2/2) * plan->props.strides[2] + (i1/2) * plan->props.strides[1];
+      const fftw_complex *even = &blocks[(i2 % 2) + (i1 % 2) * 2][in_offset];
+      const fftw_complex *odd = &blocks[(i2 % 2) + (i1 % 2) * 2 + 4][in_offset];
+      double *row_out = &out[i2 * plan->props.strides[2] * 4 + i1 * plan->props.strides[1] * 2];
+      interleave_product(plan->props.dims[0], row_out, even, odd);
     }
   }
 }
@@ -810,7 +858,7 @@ static void phase_shift_interpolate_execute_split(const void *detail, double *ri
     fftw_complex *blocks[8];
 
     for(int block = 0; block < 8; ++block)
-      blocks[block] = block_data + block  * block_size;
+      blocks[block] = block_data + block * block_size;
 
     interleave_real(block_size, (double*) blocks[0], rin, iin);
     phase_shift_interpolate_execute_interleaved_common(plan, blocks);
@@ -835,15 +883,20 @@ void phase_shift_interpolate_execute_split_product(const void *detail, double *r
 
   if (plan->packing_strategy == PACKED)
   {
-    fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
-    fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
+    fftw_complex *const block_data = rs_alloc_complex(8 * block_size);
+    fftw_complex *blocks[8];
 
-    interleave_real(block_size, (double*) scratch_coarse, rin, iin);
-    phase_shift_interpolate_execute_interleaved(detail, scratch_coarse, scratch_fine);
-    complex_to_product(8 * block_size, scratch_fine, out);
+    for(int block = 0; block < 8; ++block)
+      blocks[block] = block_data + block * block_size;
 
-    rs_free(scratch_coarse);
-    rs_free(scratch_fine);
+    interleave_real(block_size, (double*) blocks[0], rin, iin);
+    phase_shift_interpolate_execute_interleaved_common(plan, blocks);
+
+    time_point_save(&plan->before_gather);
+    gather_blocks_product(plan, blocks, out);
+    time_point_save(&plan->end);
+
+    rs_free(block_data);
   }
   else if (plan->packing_strategy == SEPARATE)
   {
