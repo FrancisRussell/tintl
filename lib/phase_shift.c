@@ -578,28 +578,43 @@ static void interleave_complex(size_t size, fftw_complex *out, const fftw_comple
 #endif
 }
 
-static void gather_complex(size_t size, size_t stride, const fftw_complex *in, fftw_complex *out)
+static void interleave_split(size_t size, double *rout, double *iout, const fftw_complex *even, const fftw_complex *odd)
 {
   for(size_t i=0; i<size; ++i)
-    out[i] = in[i*stride];
+  {
+    const fftw_complex even_e = even[i];
+    const fftw_complex odd_e = odd[i];
+
+    rout[i * 2] = *((const double*) &even_e);
+    rout[i * 2 + 1] = *((const double*) &odd_e);
+
+    iout[i * 2] = *(((const double*) &even_e) + 1);
+    iout[i * 2 + 1] = *(((const double*) &odd_e) + 1);
+  }
+}
+
+static void gather_complex(size_t size, size_t stride, const fftw_complex *in, fftw_complex *out)
+{
+  for(size_t i = 0; i < size; ++i)
+    out[i] = in[i * stride];
 }
 
 static void scatter_complex(size_t size, size_t stride, fftw_complex *out, const fftw_complex *in)
 {
-  for(size_t i=0; i<size; ++i)
-    out[i*stride] = in[i];
+  for(size_t i = 0; i < size; ++i)
+    out[i * stride] = in[i];
 }
 
 static void gather_real(size_t size, size_t stride, const double *in, double *out)
 {
-  for(size_t i=0; i<size; ++i)
-    out[i] = in[i*stride];
+  for(size_t i = 0; i < size; ++i)
+    out[i] = in[i * stride];
 }
 
 static void scatter_real(size_t size, size_t stride, double *out, const double *in)
 {
-  for(size_t i=0; i<size; ++i)
-    out[i*stride] = in[i];
+  for(size_t i = 0; i < size; ++i)
+    out[i * stride] = in[i];
 }
 
 static void gather_split(size_t size, size_t stride, const double *rin, const double *iin, fftw_complex *cout)
@@ -654,6 +669,44 @@ static void gather_blocks_real(phase_shift_plan plan, double *blocks[8], double 
   }
 }
 
+static void gather_blocks_split(phase_shift_plan plan, fftw_complex *blocks[8], double *rout, double *iout)
+{
+  for(size_t i2=0; i2 < plan->props.dims[2] * 2; ++i2)
+  {
+    for(size_t i1=0; i1 < plan->props.dims[1] * 2; ++i1)
+    {
+      const size_t in_offset = (i2/2) * plan->props.strides[2] + (i1/2) * plan->props.strides[1];
+      const fftw_complex *even = &blocks[(i2 % 2) + (i1 % 2) * 2][in_offset];
+      const fftw_complex *odd = &blocks[(i2 % 2) + (i1 % 2) * 2 + 4][in_offset];
+      double *row_rout = &rout[i2 * plan->props.strides[2] * 4 + i1 * plan->props.strides[1] * 2];
+      double *row_iout = &iout[i2 * plan->props.strides[2] * 4 + i1 * plan->props.strides[1] * 2];
+      interleave_split(plan->props.dims[0], row_rout, row_iout, even, odd);
+    }
+  }
+}
+
+static void phase_shift_interpolate_execute_interleaved_common(const phase_shift_plan plan, fftw_complex *blocks[8])
+{
+  assert(plan->packing_strategy == PACKED);
+  const size_t block_size = num_elements(&plan->props);
+  const int max_dim = max_dimension(plan);
+
+  fftw_complex *const scratch = rs_alloc_complex(max_dim);
+
+  time_point_save(&plan->before_expand2);
+  expand_dim2(plan, blocks[0], blocks[1], scratch);
+
+  time_point_save(&plan->before_expand1);
+  for(int n = 0; n < 2; ++n)
+    expand_dim1(plan, blocks[n], blocks[n + 2], scratch);
+
+  time_point_save(&plan->before_expand0);
+  for(int n = 0; n < 4; ++n)
+    expand_dim0(plan, blocks[n], blocks[n + 4], scratch);
+
+  rs_free(scratch);
+}
+
 static void phase_shift_interpolate_execute_interleaved(const void *detail, fftw_complex *in, fftw_complex *out)
 {
   phase_shift_plan plan = (phase_shift_plan) detail;
@@ -668,25 +721,12 @@ static void phase_shift_interpolate_execute_interleaved(const void *detail, fftw
   for(int block = 1; block < 8; ++block)
     blocks[block] = block_data + (block - 1) * block_size;
 
-  const int max_dim = max_dimension(plan);
-  fftw_complex *const scratch = rs_alloc_complex(max_dim);
-
-  time_point_save(&plan->before_expand2);
-  expand_dim2(plan, blocks[0], blocks[1], scratch);
-
-  time_point_save(&plan->before_expand1);
-  for(int n = 0; n < 2; ++n)
-    expand_dim1(plan, blocks[n], blocks[n + 2], scratch);
-
-  time_point_save(&plan->before_expand0);
-  for(int n = 0; n < 4; ++n)
-    expand_dim0(plan, blocks[n], blocks[n + 4], scratch);
+  phase_shift_interpolate_execute_interleaved_common(plan, blocks);
 
   time_point_save(&plan->before_gather);
   gather_blocks_complex(plan, blocks, out);
   time_point_save(&plan->end);
 
-  rs_free(scratch);
   rs_free(block_data);
 }
 
@@ -747,13 +787,20 @@ static void phase_shift_interpolate_execute_split(const void *detail, double *ri
   }
   else if (plan->packing_strategy == PACKED)
   {
-    fftw_complex *const in = rs_alloc_complex(block_size);
-    fftw_complex *const out = rs_alloc_complex(8 * block_size);
-    interleave_real(block_size, (double*) in, rin, iin);
-    phase_shift_interpolate_execute_interleaved(plan, in, out);
-    deinterleave_real(8 * block_size, (const double*) out, rout, iout);
-    rs_free(in);
-    rs_free(out);
+    fftw_complex *const block_data = rs_alloc_complex(8 * block_size);
+    fftw_complex *blocks[8];
+
+    for(int block = 0; block < 8; ++block)
+      blocks[block] = block_data + block  * block_size;
+
+    interleave_real(block_size, (double*) blocks[0], rin, iin);
+    phase_shift_interpolate_execute_interleaved_common(plan, blocks);
+
+    time_point_save(&plan->before_gather);
+    gather_blocks_split(plan, blocks, rout, iout);
+    time_point_save(&plan->end);
+
+    rs_free(block_data);
   }
   else
   {
