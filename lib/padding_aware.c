@@ -18,6 +18,7 @@ typedef enum
   SEPARATE
 } strategy_t;
 
+/// Implementation-specific structure for padding-aware interpolation plans.
 typedef struct
 {
   interpolate_properties_t props;

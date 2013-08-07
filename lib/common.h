@@ -16,6 +16,8 @@ enum
   SSE_ALIGN_MASK = SSE_ALIGN - 1
 };
 
+
+/// Enumeration of the different types of supported interpolation.
 typedef enum
 {
   INTERLEAVED,
@@ -23,6 +25,7 @@ typedef enum
   SPLIT_PRODUCT
 } interpolation_t;
 
+/// Describes an interpolation.
 typedef struct
 {
   int type;
@@ -30,6 +33,7 @@ typedef struct
   int strides[3];
 } interpolate_properties_t;
 
+/// Describes the dimensions and padding of a 3D block of data.
 typedef struct
 {
   int dims[3];

@@ -31,6 +31,7 @@ typedef enum
   SEPARATE
 } packing_strategy_t;
 
+/// Implementation-specific structure for phase-shift interpolation plans.
 typedef struct
 {
   interpolate_properties_t props;

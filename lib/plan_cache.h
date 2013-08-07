@@ -6,6 +6,7 @@
 
 struct plan_cache_entry_s;
 
+/// Key for plan cache.
 typedef struct
 {
   int n0;
@@ -14,6 +15,7 @@ typedef struct
   interpolation_t type;
 } plan_key_t;
 
+/// Plan cache structure.
 typedef struct
 {
   size_t size;
@@ -21,8 +23,13 @@ typedef struct
 
 } plan_cache_t;
 
+/// Initialise a plan cache.
 void plan_cache_init(plan_cache_t *cache);
+
+/// Insert an entry into the plan cache.
 int plan_cache_insert(plan_cache_t *cache, const plan_key_t *key, interpolate_plan plan);
+
+/// Retrieve an entry from a plan cache, returning NULL if absent.
 interpolate_plan plan_cache_get(plan_cache_t *cache, const plan_key_t *key);
 
 #endif

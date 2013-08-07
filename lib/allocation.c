@@ -6,9 +6,13 @@
 
 enum
 {
+  /// SSE byte alignment.
   ALIGNMENT = 1 << 4
 };
 
+
+/// Allocate SSE-aligned data.
+/// @param size number of bytes.
 static void *rs_alloc(size_t size)
 {
   char *const data = malloc(size + sizeof(size_t) + ALIGNMENT - 1);

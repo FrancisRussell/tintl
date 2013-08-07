@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 
+/// Entry representation for interpolation plan cache.
 typedef struct plan_cache_entry_s
 {
   plan_key_t key;

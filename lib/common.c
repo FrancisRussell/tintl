@@ -7,6 +7,17 @@
 #include <allocation.h>
 #include <fftw_cycle.h>
 
+/// Copy complex values between 3D arrays of different strides and
+/// simultaneously scale. Values are scaled by the inverse of the number
+/// of source elements being interpolated.
+/// @param props properties of the interpolation.
+/// @param n0 block width in dimension 0.
+/// @param n1 block width in dimension 1.
+/// @param n2 block width in dimension 2.
+/// @param from_info size/stride details of source array.
+/// @param to_info size/stride details of target array.
+/// @param from source array.
+/// @param to target array.
 static void block_copy_coarse_to_fine_interleaved(interpolate_properties_t *props, size_t n0, size_t n1, size_t n2,
     const block_info_t *from_info, const fftw_complex *from,
     const block_info_t *to_info, fftw_complex *to);
@@ -37,6 +48,8 @@ void block_copy_coarse_to_fine_interleaved(interpolate_properties_t *props, size
   }
 }
 
+
+/// Populate an interpolate properties structure given the size of the interpolation.
 void populate_properties(interpolate_properties_t *props, interpolation_t type, size_t n0, size_t n1, size_t n2)
 {
   props->type = type;
@@ -49,6 +62,13 @@ void populate_properties(interpolate_properties_t *props, interpolation_t type, 
   props->strides[2] = n2 * n1;
 }
 
+/// Halve the magnitude of Nyquist components in a frequency domain
+/// representation of a data-set. This is necessary when performing
+/// interpolation when one or more dimensions is even. It is valid for
+/// the block to be truncated, as occurs with r2c transforms.
+/// @param props interpolation properties.
+/// @param block_info block information of the frequency representation.
+/// @param coarse the data
 void halve_nyquist_components(interpolate_properties_t *props, block_info_t *block_info, fftw_complex *coarse)
 {
   const size_t n2 = props->dims[2];
@@ -78,6 +98,17 @@ void halve_nyquist_components(interpolate_properties_t *props, block_info_t *blo
         coarse[s2 * i2 +  s1 * i1 + (n0 / 2)] *= 0.5;
 }
 
+
+/// Pads the frequency domain representation of a data-set to double
+/// its density in three dimensions. In the case of even dimensions, the
+/// Nyquist component is duplicated.
+/// @param props interpolation properties.
+/// @param from_info source array information.
+/// @param to_info target array information.
+/// @param from source array.
+/// @param to target array.
+/// @param positive_only if non-zero, do not copy negative frequency
+/// blocks in the contiguous dimension.
 void pad_coarse_to_fine_interleaved(interpolate_properties_t *props,
   const block_info_t *from_info, const fftw_complex *from,
   const block_info_t *to_info, fftw_complex *to,
@@ -115,6 +146,11 @@ void pad_coarse_to_fine_interleaved(interpolate_properties_t *props,
   }
 }
 
+/// Deinterleaves an even-length array of doubles.
+/// @param size the length of both the output arrays.
+/// @param in the input array.
+/// @param rout the even-located elements.
+/// @param iout the odd-located elements.
 void deinterleave_real(const size_t size, const double *in, double *rout, double *iout)
 {
   const double *in_e = (const double*) in;
@@ -144,6 +180,12 @@ void deinterleave_real(const size_t size, const double *in, double *rout, double
   }
 }
 
+
+/// Interleaves two arrays of doubles.
+/// @param size the length of both the input arrays.
+/// @param out the output array.
+/// @param even the even-located elements.
+/// @param odd the odd-located elements.
 void interleave_real(size_t size, double *out, const double *even, const double *odd)
 {
   size_t i = 0;
@@ -172,6 +214,7 @@ void interleave_real(size_t size, double *out, const double *even, const double 
   }
 }
 
+/// Time an interpolation plan for complex input data.
 double time_interpolate_interleaved(interpolate_plan plan, const int *dims)
 {
   ticks before, after;
@@ -193,6 +236,7 @@ double time_interpolate_interleaved(interpolate_plan plan, const int *dims)
 }
 
 
+/// Time an interpolation plan for split-format input data.
 double time_interpolate_split(interpolate_plan plan, const int *dims)
 {
   ticks before, after;
@@ -219,6 +263,8 @@ double time_interpolate_split(interpolate_plan plan, const int *dims)
   return elapsed(after, before);
 }
 
+/// Time an interpolation for split-format data where the results are
+/// pointwise multiplied.
 double time_interpolate_split_product(interpolate_plan plan, const int *dims)
 {
   ticks before, after;
@@ -242,6 +288,7 @@ double time_interpolate_split_product(interpolate_plan plan, const int *dims)
   return elapsed(after, before);
 }
 
+/// Copy doubles from a smaller to larger region.
 void copy_real(const block_info_t *from_info, const double *from,
   const block_info_t *to_info, double *to)
 {
