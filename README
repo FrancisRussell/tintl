@@ -1,0 +1,157 @@
+This code implements Fourier resampling of 3D regular data-sets to
+twice their resolution.
+
+Building
+========
+
+If configure script is not present:
+
+$ ./bootstrap
+
+then, or otherwise:
+
+$ ./configure
+$ make
+
+
+Running
+=======
+
+A benchmarking tool can be found in the bin folder.
+
+It can currently be invoked:
+
+$ ./benchmark
+
+Gives some detailed timing results for different interpolation
+strategies and data formats for a fixed size input.
+
+$ ./benchmark --table-interleaved
+
+Compares the three different implemented interpolation algorithms for
+different sized inputs when taking interleaved input data.
+
+$ ./benchmark --table-split
+
+Compares the three different implemented interpolation algorithms for
+different sized inputs when taking interleaved split data.
+
+
+Interpolation Algorithms
+========================
+
+Three algorithms are implemented which are also described in the
+following slides:
+
+https://www.doc.ic.ac.uk/~fpr02/psl/presentation_201306.pdf
+
+Naïve
+-----
+
+- Perform a 3D forward transform.
+- Pad in frequency domain.
+- Perform a 3D backward transform.
+
+Padding Aware
+-------------
+
+- Perform a 3D forward transform.
+- Pad in frequency domain.
+- Perform a 3D backward transform by performing backward 1D transforms
+  on each pencil in each dimension.
+
+Phase Shift
+-----------
+
+This transform is built on the following 1D transform:
+
+- Apply a forward transform to a 1D vector.
+- Apply a correlation in the frequency domain to shift the frequency
+  components by 1/2 a sample.
+- Apply a backward transform to produce the interpolated values of the
+  original signal.
+
+To produce the 3D transform, the 1D transform is applied to the original data
+in all three dimensions, producing seven new data blocks of the same size. The
+new data blocks and the original data are interleaved to produce the output
+array.
+
+
+Interpolation Variants
+======================
+
+Interleaved
+-----------
+
+The interpolation can be applied to the standard complex data format,
+but nothing in the application we're targeting (ONETEP) performs
+interpolation on data in the complex format.
+
+ONETEP always interpolates two real data-sets simultaneously which it
+typically converts to an interleaved format. Hence, the interleaved
+interpolation is still useful for implementing transforms.
+
+Split
+-----
+
+We provide functionality that takes two real data-sets and interpolates
+them simultaneously. Note that it is typically impossible to use FFTW's
+split-format FFTs to handle this. This is due to the fact that FFTW
+requires that split plans always take data with the same distance
+between the complex and real parts.
+
+Split-Product
+-------------
+
+The interpolations take in two real data sets and produce a single real
+data set. After interpolation of both data-sets, a point-wise multiply
+is applied between every element of the interpolated inputs.
+
+
+Implementation Variants
+=======================
+
+As well as implementing different algorithms, we have implemented
+different variations in how we call the underlying libraries.
+We currently time and choose the best one in the planning stage.
+
+Naïve
+-----
+
+For split-format interpolation, we implement:
+
+- Interleaving, followed by standard complex interpolation, then
+  deinterleaving.
+- Interpolation on real and complex inputs separately using
+  real-to-complex and complex-to-real transforms.
+
+Padding-Aware
+-------------
+
+For split format interpolation, as above we implement:
+
+- Interleaving, interpolation, then deinterleaving.
+- Interpolation of both inputs separately using real-to-complex and
+  complex-to-real transforms.
+
+The corresponding calls to the underlying library using batching as much
+as possible.
+
+Phase-Shift
+-----------
+
+For both interleaved and split interpolation we look at:
+
+- Performing batch FFTs on the input data blocks versus performing them
+  on individual pencils.
+
+In the case of interleaved interpolation using the pencil strategy:
+
+- We vary whether we have the FFT access the pencils directly from the
+  input data block, or manually stage the data to and from a contiguous
+  region ourself.
+
+For the pencil strategy for split-format interpolation we interpolate
+both input data sets separately. We must always manually stage since we
+cannot guarantee the alignment requirements for each pencil when using
+double input data.
