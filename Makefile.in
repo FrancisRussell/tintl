@@ -1,5 +1,6 @@
 CC = @CC@
 FC = @FC@
+HAVE_OPENMP = @HAVE_OPENMP@
 FFTW_LDLIBS = -lfftw3
 FFTW_INCLUDES = -I/usr/include
 FFTW_LDFLAGS=
@@ -7,40 +8,58 @@ COMMON_FLAGS = -Wall -pedantic -O3 -fPIC $(FFTW_INCLUDES) -Iinclude
 CFLAGS = $(COMMON_FLAGS)
 FFLAGS = $(COMMON_FLAGS)
 
+ifeq ($(HAVE_OPENMP), 1)
+OPENMP_CFLAGS = @OPENMP_CFLAGS@
+endif
+
+LIB_SOURCES = allocation.c common.c interpolate.c naive.c padding_aware.c \
+	      phase_shift.c plan_cache.c timer.c
+
 default: lib/libresample.so bin/benchmark
 
 bin/benchmark.o: include/timer.h include/allocation.h include/interpolate.h \
   include/phase_shift.h include/naive.h include/padding_aware.h
 
-lib/libresample.so: lib/allocation.o lib/common.o lib/interpolate.o lib/naive.o \
-  lib/padding_aware.o lib/phase_shift.o lib/plan_cache.o lib/timer.o
+ifeq ($(HAVE_OPENMP), 1)
+lib/libresample.so: $(patsubst %.c, lib/omp/%.o, $(LIB_SOURCES))
+	$(CC) -shared -fPIC $(OPENMP_CFLAGS) $(FFTW_LDFLAGS) $^ -o $@ $(FFTW_LDLIBS)
+else
+lib/libresample.so: $(patsubst %.c, lib/st/%.o, $(LIB_SOURCES))
 	$(CC) -shared -fPIC $(FFTW_LDFLAGS) $^ -o $@ $(FFTW_LDLIBS)
+endif
 
 bin/%: bin/%.o lib/libresample.so
 	$(CC) $< -o $@ -Llib -lresample -Wl,-rpath=../lib -Wl,-rpath=./lib
 
-lib/allocation.o: include/allocation.h
+lib/st/%.o: lib/%.c
+	mkdir -p lib/st
+	$(CC) -c $(CFLAGS) $< -o $@ 
 
-lib/common.o: lib/common.h
+lib/omp/%.o: lib/%.c
+	mkdir -p lib/omp
+	$(CC) -c $(CFLAGS) $(OPENMP_CFLAGS) $< -o $@ 
 
-lib/interpolate.o: include/timer.h include/interpolate.h
+lib/%/allocation.o: include/allocation.h
 
-lib/naive.o: include/interpolate.h include/naive.h include/timer.h \
+lib/%/common.o: lib/common.h
+
+lib/%/interpolate.o: include/timer.h include/interpolate.h
+
+lib/%/naive.o: include/interpolate.h include/naive.h include/timer.h \
   include/allocation.h lib/common.h include/fftw_cycle.h
 
-lib/padding_aware.o: include/interpolate.h include/padding_aware.h include/timer.h \
+lib/%/padding_aware.o: include/interpolate.h include/padding_aware.h include/timer.h \
   include/allocation.h lib/common.h include/fftw_cycle.h
 
-lib/phase_shift.c: include/interpolate.h include/phase_shift.h include/timer.h \
+lib/%/phase_shift.c: include/interpolate.h include/phase_shift.h include/timer.h \
   include/allocation.h include/fftw_cycle.h lib/common.h
 
-lib/plan_cache.o: lib/plan_cache.h
+lib/%/plan_cache.o: lib/plan_cache.h
 
-lib/timer.o: include/timer.h
+lib/%/timer.o: include/timer.h
 
 clean: 
-	rm -f lib/libresample.so lib/allocation.o lib/common.o lib/interpolate.o \
-	  lib/naive.o lib/padding_aware.o lib/phase_shift.o lib/plan_cache.o \
-	  lib/timer.o bin/benchmark.o bin/benchmark
+	rm -rf lib/st lib/omp
+	rm -f lib/libresample.so bin/benchmark.o bin/benchmark
 
 .PHONY: default clean

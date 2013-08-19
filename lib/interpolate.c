@@ -39,17 +39,50 @@ void interpolate_print_timings(const interpolate_plan plan)
 
 void interpolate_destroy_plan(interpolate_plan plan)
 {
-  --plan->ref_cnt;
+  interpolate_dec_ref_count(plan);
+}
 
-  if (plan->ref_cnt == 0)
+int interpolate_inc_ref_count(interpolate_plan plan)
+{
+  int count;
+
+#ifdef _OPENMP
+  #pragma omp critical
+#endif
+  count = ++plan->ref_cnt;
+
+  return count;
+}
+
+int interpolate_dec_ref_count(interpolate_plan plan)
+{
+  int count;
+
+#ifdef _OPENMP
+  #pragma omp critical
+#endif
+  count = --plan->ref_cnt;
+
+  assert(count >= 0);
+
+  if (count == 0)
   {
     plan->destroy_detail(plan->detail);
     free(plan);
   }
+
+  return count;
 }
 
-static plan_cache_t *get_best_plan_cache(void)
+static plan_cache_t *global_plan_cache(void)
 {
+  plan_cache_t *cache_ptr;
+
+#ifdef _OPENMP
+  #pragma omp critical
+  {
+#endif
+
   static int cache_initialised = 0;
   static plan_cache_t cache;
 
@@ -59,7 +92,27 @@ static plan_cache_t *get_best_plan_cache(void)
     cache_initialised = 1;
   }
 
-  return &cache;
+  cache_ptr = &cache;
+
+#ifdef _OPENMP
+  }
+#endif
+
+  return cache_ptr;
+}
+
+static interpolate_plan global_plan_cache_get(const plan_key_t *key)
+{
+  plan_cache_t *const cache = global_plan_cache();
+  interpolate_plan cached_plan = plan_cache_get(cache, key);
+  return cached_plan;
+}
+
+static int global_plan_cache_insert(const plan_key_t *key, interpolate_plan plan)
+{
+  plan_cache_t *const cache = global_plan_cache();
+  const int inserted = plan_cache_insert(cache, key, plan);
+  return inserted;
 }
 
 typedef interpolate_plan (*plan_constructor_t)(int n0, int n1, int n2, int flags);
@@ -68,9 +121,6 @@ static interpolate_plan find_best_plan(double (*timer)(interpolate_plan, const i
   plan_constructor_t *constructors,
   int n0, int n1, int n2, interpolation_t type, int flags)
 {
-  plan_cache_t *best_plan_cache = get_best_plan_cache();
-  assert(best_plan_cache != NULL);
-
   plan_key_t key;
   key.n0 = n0;
   key.n1 = n1;
@@ -79,12 +129,9 @@ static interpolate_plan find_best_plan(double (*timer)(interpolate_plan, const i
 
   if (best_plan_cache_enabled)
   {
-    interpolate_plan cached_plan = plan_cache_get(best_plan_cache, &key);
+    interpolate_plan cached_plan = global_plan_cache_get(&key);
     if (cached_plan != NULL)
-    {
-      ++cached_plan->ref_cnt;
       return cached_plan;
-    }
   }
 
   const int dims[] = {n0, n1, n2};
@@ -115,12 +162,10 @@ static interpolate_plan find_best_plan(double (*timer)(interpolate_plan, const i
   }
 
   assert(best_plan != NULL);
+
   if (best_plan_cache_enabled)
-  {
-    const int inserted = plan_cache_insert(best_plan_cache, &key, best_plan);
-    if (inserted)
-      ++best_plan->ref_cnt;
-  }
+    global_plan_cache_insert(&key, best_plan);
+
   return best_plan;
 }
 

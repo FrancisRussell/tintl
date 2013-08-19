@@ -1,6 +1,10 @@
 #ifndef PLAN_CACHE_H
 #define PLAN_CACHE_H
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 #include "common.h"
 #include <interpolate.h>
 
@@ -20,7 +24,9 @@ typedef struct
 {
   size_t size;
   struct plan_cache_entry_s *first;
-
+#ifdef _OPENMP
+  omp_lock_t lock;
+#endif
 } plan_cache_t;
 
 /// Initialise a plan cache.
@@ -31,5 +37,8 @@ int plan_cache_insert(plan_cache_t *cache, const plan_key_t *key, interpolate_pl
 
 /// Retrieve an entry from a plan cache, returning NULL if absent.
 interpolate_plan plan_cache_get(plan_cache_t *cache, const plan_key_t *key);
+
+/// Destroy a plan cache
+void plan_cache_destroy(plan_cache_t *cache);
 
 #endif

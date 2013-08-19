@@ -47,7 +47,7 @@ void interpolate_execute_split_product(const interpolate_plan plan, double *rin,
 /// Prints implementation-specific timing details to standard output
 void interpolate_print_timings(const interpolate_plan plan);
 
-/// Destroys the given implementation specific part of a plan
+/// Destroys a plan
 void interpolate_destroy_plan(interpolate_plan plan);
 
 /// Construct the best-performing interleaved interpolation plan from
@@ -61,5 +61,11 @@ interpolate_plan interpolate_plan_3d_split_best(int n0, int n1, int n2, int flag
 /// Construct the best-performing split-product interpolation plan from
 /// multiple implementations.
 interpolate_plan interpolate_plan_3d_split_product_best(int n0, int n1, int n2, int flags);
+
+/// Increment reference count and return count
+int interpolate_inc_ref_count(interpolate_plan);
+
+/// Decrement reference count and return count
+int interpolate_dec_ref_count(interpolate_plan);
 
 #endif

@@ -1,6 +1,7 @@
 *.o
 *.so
 *.swp
+/aclocal.m4
 /bin/benchmark
 /configure
 /config.log
