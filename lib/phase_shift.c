@@ -226,6 +226,7 @@ static void find_best_staging_interleaved(phase_shift_plan plan, fftw_complex *d
 
 static void find_best_staging_split(phase_shift_plan plan, const block_info_t *block_info, double *in, double *out, fftw_complex *scratch)
 {
+  /*
   void (*transform_function[2])(phase_shift_plan, int, const block_info_t*, double*, double*, fftw_complex*) =
   {
     transform_in_real,
@@ -237,8 +238,9 @@ static void find_best_staging_split(phase_shift_plan plan, const block_info_t *b
     stage_in_real,
     stage_out_real
   };
+  */
 
-  ticks before, after;
+  // ticks before, after;
 
   for(int phase = 0; phase < 2; ++phase)
   {
@@ -756,7 +758,6 @@ static void gather_blocks_product(phase_shift_plan plan, fftw_complex *blocks[8]
 static void phase_shift_interpolate_execute_interleaved_common(const phase_shift_plan plan, fftw_complex *blocks[8])
 {
   assert(plan->packing_strategy == PACKED);
-  const size_t block_size = num_elements(&plan->props);
   const int max_dim = max_dimension(plan);
 
   fftw_complex *const scratch = rs_alloc_complex(max_dim);

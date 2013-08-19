@@ -42,9 +42,15 @@ typedef struct
 
 static void pointwise_multiply_complex(size_t size, fftw_complex *a, const fftw_complex *b);
 static void pointwise_multiply_real(size_t size, double *a, const double *b);
-static void complex_to_product(const size_t size, const fftw_complex *in, double *out);
+
 void deinterleave_real(size_t size, const double *in, double *rout, double *iout);
 void interleave_real(size_t size, double *out, const double *even, const double *odd);
+void complex_to_product(const size_t size, const fftw_complex *in, double *out);
+
+void get_block_info_coarse(const interpolate_properties_t *props, block_info_t *info);
+void get_block_info_fine(const interpolate_properties_t *props, block_info_t *info);
+void get_block_info_real_recip_coarse(const interpolate_properties_t *props, block_info_t *info);
+void get_block_info_real_recip_fine(const interpolate_properties_t *props, block_info_t *info);
 
 void populate_properties(interpolate_properties_t *props, interpolation_t type, size_t n0, size_t n1, size_t n2);
 void pad_coarse_to_fine_interleaved(interpolate_properties_t *props,
@@ -114,56 +120,12 @@ static inline void pointwise_multiply_real(size_t size, double *a, const double 
     a[i] *= b[i];
 }
 
-static size_t num_elements(interpolate_properties_t *props)
+static inline size_t num_elements(interpolate_properties_t *props)
 {
   return props->dims[0] * props->dims[1] * props->dims[2];
 }
 
-static void get_block_info_coarse(const interpolate_properties_t *props, block_info_t *info)
-{
-  info->dims[0] = props->dims[0];
-  info->dims[1] = props->dims[1];
-  info->dims[2] = props->dims[2];
-
-  info->strides[0] = 1;
-  info->strides[1] = info->dims[0];
-  info->strides[2] = info->dims[0] * info->dims[1];
-}
-
-static void get_block_info_fine(const interpolate_properties_t *props, block_info_t *info)
-{
-  info->dims[0] = props->dims[0] * 2;
-  info->dims[1] = props->dims[1] * 2;
-  info->dims[2] = props->dims[2] * 2;
-
-  info->strides[0] = 1;
-  info->strides[1] = info->dims[0];
-  info->strides[2] = info->dims[0] * info->dims[1];
-}
-
-static void get_block_info_real_recip_coarse(const interpolate_properties_t *props, block_info_t *info)
-{
-  info->dims[0] = props->dims[0] / 2 + 1;
-  info->dims[1] = props->dims[1];
-  info->dims[2] = props->dims[2];
-
-  info->strides[0] = 1;
-  info->strides[1] = info->dims[0];
-  info->strides[2] = info->dims[0] * info->dims[1];
-}
-
-static void get_block_info_real_recip_fine(const interpolate_properties_t *props, block_info_t *info)
-{
-  info->dims[0] = props->dims[0] + 1;
-  info->dims[1] = props->dims[1] * 2;
-  info->dims[2] = props->dims[2] * 2;
-
-  info->strides[0] = 1;
-  info->strides[1] = info->dims[0];
-  info->strides[2] = info->dims[0] * info->dims[1];
-}
-
-static size_t num_elements_block(const block_info_t *block_info)
+static inline size_t num_elements_block(const block_info_t *block_info)
 {
   return block_info->dims[0] * block_info->dims[1] * block_info->dims[2];
 }
@@ -172,14 +134,6 @@ static inline size_t corner_size(const size_t n, const int negative)
 {
   // In the even case, this will duplicate the Nyquist in both blocks
   return n / 2 + (negative == 0);
-}
-
-static void complex_to_product(const size_t size, const fftw_complex *in, double *out)
-{
-  double *in_e = (double*) in;
-
-  for(size_t i=0; i<size; ++i)
-    out[i] = in_e[2 * i] * in_e[2 * i + 1];
 }
 
 static inline void fftw_destroy_plan_maybe_null(fftw_plan plan)

@@ -214,6 +214,14 @@ void interleave_real(size_t size, double *out, const double *even, const double 
   }
 }
 
+void complex_to_product(const size_t size, const fftw_complex *in, double *out)
+{
+  double *in_e = (double*) in;
+
+  for(size_t i=0; i<size; ++i)
+    out[i] = in_e[2 * i] * in_e[2 * i + 1];
+}
+
 /// Time an interpolation plan for complex input data.
 double time_interpolate_interleaved(interpolate_plan plan, const int *dims)
 {
@@ -308,4 +316,48 @@ void copy_real(const block_info_t *from_info, const double *from,
     from += from_info->strides[2] - n1 * from_info->strides[1];
     to += to_info->strides[2] - n1 * to_info->strides[1];
   }
+}
+
+void get_block_info_coarse(const interpolate_properties_t *props, block_info_t *info)
+{
+  info->dims[0] = props->dims[0];
+  info->dims[1] = props->dims[1];
+  info->dims[2] = props->dims[2];
+
+  info->strides[0] = 1;
+  info->strides[1] = info->dims[0];
+  info->strides[2] = info->dims[0] * info->dims[1];
+}
+
+void get_block_info_fine(const interpolate_properties_t *props, block_info_t *info)
+{
+  info->dims[0] = props->dims[0] * 2;
+  info->dims[1] = props->dims[1] * 2;
+  info->dims[2] = props->dims[2] * 2;
+
+  info->strides[0] = 1;
+  info->strides[1] = info->dims[0];
+  info->strides[2] = info->dims[0] * info->dims[1];
+}
+
+void get_block_info_real_recip_coarse(const interpolate_properties_t *props, block_info_t *info)
+{
+  info->dims[0] = props->dims[0] / 2 + 1;
+  info->dims[1] = props->dims[1];
+  info->dims[2] = props->dims[2];
+
+  info->strides[0] = 1;
+  info->strides[1] = info->dims[0];
+  info->strides[2] = info->dims[0] * info->dims[1];
+}
+
+void get_block_info_real_recip_fine(const interpolate_properties_t *props, block_info_t *info)
+{
+  info->dims[0] = props->dims[0] + 1;
+  info->dims[1] = props->dims[1] * 2;
+  info->dims[2] = props->dims[2] * 2;
+
+  info->strides[0] = 1;
+  info->strides[1] = info->dims[0];
+  info->strides[2] = info->dims[0] * info->dims[1];
 }
