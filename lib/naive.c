@@ -184,11 +184,8 @@ static void naive_interpolate_destroy_detail(void *detail)
   fftw_destroy_plan(plan->interleaved_forward);
   fftw_destroy_plan(plan->interleaved_backward);
 
-  if (plan->real_forward != NULL)
-    fftw_destroy_plan(plan->real_forward);
-
-  if (plan->real_backward != NULL)
-    fftw_destroy_plan(plan->real_backward);
+  fftw_destroy_plan_maybe_null(plan->real_forward);
+  fftw_destroy_plan_maybe_null(plan->real_backward);
 
   free(plan);
 }

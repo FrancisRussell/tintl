@@ -240,17 +240,10 @@ static void pa_interpolate_destroy_detail(void *detail)
 
   fftw_destroy_plan(plan->n0_backward_interleaved);
 
-  if (plan->real_forward != NULL)
-    fftw_destroy_plan(plan->real_forward);
-
-  if (plan->n2_backward_real != NULL)
-    fftw_destroy_plan(plan->n2_backward_real);
-
-  if (plan->n1_backward_real != NULL)
-    fftw_destroy_plan(plan->n1_backward_real);
-
-  if (plan->n0_backward_real != NULL)
-    fftw_destroy_plan(plan->n0_backward_real);
+  fftw_destroy_plan_maybe_null(plan->real_forward);
+  fftw_destroy_plan_maybe_null(plan->n2_backward_real);
+  fftw_destroy_plan_maybe_null(plan->n1_backward_real);
+  fftw_destroy_plan_maybe_null(plan->n0_backward_real);
 
   free(plan);
 }
