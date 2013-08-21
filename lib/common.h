@@ -65,6 +65,8 @@ double time_interpolate_interleaved(interpolate_plan plan, const int *dims);
 double time_interpolate_split(interpolate_plan plan, const int *dims);
 double time_interpolate_split_product(interpolate_plan plan, const int *dims);
 
+void setup_threading(void);
+
 static inline void pointwise_multiply_complex(size_t size, fftw_complex *a, const fftw_complex *b)
 {
 #ifdef __SSE2__

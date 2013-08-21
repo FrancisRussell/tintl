@@ -1,8 +1,22 @@
+/* include/interpolate_config.h.in.  Generated from configure.ac by autoheader.  */
+
+/* "We're linking against Intel's MKL" */
+#undef FFTW_IS_MKL
+
+/* "We're linking against a threaded FFTW" */
+#undef FFTW_IS_THREADED
+
 /* Define to 1 if you have the `clock_gettime' function. */
 #undef HAVE_CLOCK_GETTIME
 
 /* Define to 1 if you have the <c_asm.h> header file. */
 #undef HAVE_C_ASM_H
+
+/* Define to 1 if FFTW3 is found */
+#undef HAVE_FFTW3
+
+/* Define to 1 if FFTW3_OMP is found */
+#undef HAVE_FFTW3_OMP
 
 /* Define to 1 if you have the `gethrtime' function. */
 #undef HAVE_GETHRTIME
@@ -24,6 +38,9 @@
 
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
+
+/* Define to 1 if MKL is found */
+#undef HAVE_MKL
 
 /* Define to 1 if you have the `read_real_time' function. */
 #undef HAVE_READ_REAL_TIME
@@ -57,6 +74,24 @@
 
 /* Define if you have the UNICOS _rtc() intrinsic. */
 #undef HAVE__RTC
+
+/* Define to the address where bug reports for this package should be sent. */
+#undef PACKAGE_BUGREPORT
+
+/* Define to the full name of this package. */
+#undef PACKAGE_NAME
+
+/* Define to the full name and version of this package. */
+#undef PACKAGE_STRING
+
+/* Define to the one symbol short name of this package. */
+#undef PACKAGE_TARNAME
+
+/* Define to the home page for this package. */
+#undef PACKAGE_URL
+
+/* Define to the version of this package. */
+#undef PACKAGE_VERSION
 
 /* Define to 1 if you have the ANSI C header files. */
 #undef STDC_HEADERS

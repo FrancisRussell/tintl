@@ -7,6 +7,15 @@
 #include <allocation.h>
 #include <fftw_cycle.h>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
+#ifdef FFTW_IS_MKL
+#include <fftw3_mkl.h>
+#endif
+
+
 /// Copy complex values between 3D arrays of different strides and
 /// simultaneously scale. Values are scaled by the inverse of the number
 /// of source elements being interpolated.
@@ -360,4 +369,40 @@ void get_block_info_real_recip_fine(const interpolate_properties_t *props, block
   info->strides[0] = 1;
   info->strides[1] = info->dims[0];
   info->strides[2] = info->dims[0] * info->dims[1];
+}
+
+void setup_threading(void)
+{
+#ifdef FFTW_IS_THREADED
+
+#ifdef _OPENMP
+#pragma omp critical
+{
+#endif
+  static int fftw_initialised = 0;
+
+  if (!fftw_initialised)
+  {
+    const int success = fftw_init_threads();
+    assert(success);
+    fftw_initialised = 1;
+  }
+#ifdef _OPENMP
+}
+#endif
+
+#ifdef _OPENMP
+#pragma omp critical
+{
+#ifdef FFTW_IS_MKL
+  // FIXME: IMKL is not thread-safe for multiple threads executing the same
+  // plan. We need to tell IMKL the number of threads using it explicitly. We
+  // have no sane way to determine this value so we hard-wire it for now.
+  fftw3_mkl.number_of_user_threads = 128;
+#endif
+  fftw_plan_with_nthreads(omp_get_num_procs());
+}
+#endif
+
+#endif
 }

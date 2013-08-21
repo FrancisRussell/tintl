@@ -57,6 +57,8 @@ static const char *get_name(const void *detail)
 
 static interpolate_plan allocate_plan(void)
 {
+  setup_threading();
+
   interpolate_plan holder = malloc(sizeof(interpolate_plan_s));
   assert(holder != NULL);
 

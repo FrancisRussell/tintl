@@ -33,7 +33,8 @@ AC_TRY_LINK([#ifdef HAVE_INTRINSICS_H
 AC_MSG_RESULT($rtc_ok)
 
 #OpenMP Support
-AX_OPENMP(AC_SUBST(HAVE_OPENMP, 1), AC_SUBST(HAVE_OPENMP, 0))
+AX_OPENMP(PARALLEL_BUILD=1, PARALLEL_BUILD=0)
+AC_SUBST(HAVE_OPENMP, "${PARALLEL_BUILD}")
 
 #FFTW
 AC_ARG_WITH([fftw],
@@ -50,7 +51,7 @@ AC_ARG_WITH([fftw],
 AC_ARG_WITH([mkl],
             AC_HELP_STRING([--with-mkl=PFX], [Use the Intel MKL installation in PFX]),
             [
-             MKL_CPPFLAGS="-I$withval/include/fftw"
+             MKL_CPPFLAGS="-I$withval/include/fftw -I$withval/include"
              MKL_LDFLAGS="-L$withval/lib/intel64"
             ]
             )
@@ -64,7 +65,7 @@ AX_CHECK_LIBRARY([FFTW3_OMP], [fftw3.h], [fftw3_omp],
                  [AC_MSG_NOTICE([Unable to find FFTW3 (OpenMP)]); unset AS_TR_SH(ac_cv_header_fftw3.h)])
 
 AX_CHECK_LIBRARY([MKL], [fftw3.h], [mkl_rt], 
-                 AC_MSG_NOTICE([Found Intel IMKL]), 
+                 AC_MSG_NOTICE([Found Intel MKL]), 
                  [AC_MSG_NOTICE([Unable to find Intel MKL]); unset AS_TR_SH(ac_cv_header_fftw3.h)])
 
 if test "$ax_cv_have_MKL" == "yes"; then
@@ -72,11 +73,14 @@ if test "$ax_cv_have_MKL" == "yes"; then
   AC_SUBST(FFTW_INCLUDES, "$MKL_CPPFLAGS")
   AC_SUBST(FFTW_LDLIBS, "-lmkl_rt")
   AC_SUBST(FFTW_LDFLAGS, "$MKL_LDFLAGS")
+  AC_DEFINE(FFTW_IS_MKL, 1, "We're linking against Intel's MKL")
+  AC_DEFINE(FFTW_IS_THREADED, 1, "We're linking against a threaded FFTW")
 elif test "$ax_cv_have_FFTW3_OMP" == "yes"; then
   AC_MSG_NOTICE([Using FFTW3 with OpenMP support.])
   AC_SUBST(FFTW_INCLUDES, "$FFTW3_OMP_CPPFLAGS")
   AC_SUBST(FFTW_LDLIBS, "-lfftw3_omp -lfftw3")
   AC_SUBST(FFTW_LDFLAGS, "$FFTW3_OMP_LDFLAGS")
+  AC_DEFINE(FFTW_IS_THREADED, 1)
 elif test "$ax_cv_have_FFTW3" == "yes"; then
   AC_MSG_NOTICE([Using FFTW3 without threading support.])
   AC_SUBST(FFTW_INCLUDES, "$FFTW3_CPPFLAGS")
