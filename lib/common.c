@@ -400,7 +400,9 @@ void setup_threading(void)
   // have no sane way to determine this value so we hard-wire it for now.
   fftw3_mkl.number_of_user_threads = 128;
 #endif
-  fftw_plan_with_nthreads(omp_get_num_procs());
+
+  // Disable intra-FFT parallelisation for now.
+  fftw_plan_with_nthreads(1);
 }
 #endif
 
