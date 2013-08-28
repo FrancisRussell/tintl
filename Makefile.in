@@ -59,7 +59,7 @@ lib/%/plan_cache.o: lib/plan_cache.h
 lib/%/timer.o: include/timer.h
 
 clean: 
-	rm -rf lib/st lib/omp
-	rm -f lib/libresample.so bin/benchmark.o bin/benchmark
+	rm -rf lib/st lib/omp 
+	rm -f lib/*.o lib/*.so bin/*.o bin/benchmark
 
 .PHONY: default clean
