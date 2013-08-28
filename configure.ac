@@ -56,6 +56,8 @@ AC_ARG_WITH([mkl],
             ]
             )
 
+# We need to call unset after each header check due to autoconf caching
+# header checking results irrespective of compiler flags.
 AX_CHECK_LIBRARY([FFTW3], [fftw3.h], [fftw3], 
                  AC_MSG_NOTICE([Found FFTW3 (single-threaded)]), 
                  [AC_MSG_NOTICE([Failed to find FFTW3 (single-threaded)]); unset AS_TR_SH(ac_cv_header_fftw3.h)])
