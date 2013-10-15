@@ -3,6 +3,7 @@
 #include "timer.h"
 #include "allocation.h"
 #include "common.h"
+#include "fftw_utility.h"
 #include "fftw_cycle.h"
 #include <complex.h>
 #include <stdint.h>

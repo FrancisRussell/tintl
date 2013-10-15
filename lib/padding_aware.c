@@ -2,6 +2,7 @@
 #include "padding_aware.h"
 #include "timer.h"
 #include "allocation.h"
+#include "fftw_utility.h"
 #include "common.h"
 #include "fftw_cycle.h"
 #include <complex.h>

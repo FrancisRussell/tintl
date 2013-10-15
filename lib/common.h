@@ -3,7 +3,7 @@
 
 #include <complex.h>
 #include <stdint.h>
-#include <fftw3.h>
+#include <forward.h>
 #include <interpolate.h>
 
 #ifdef __SSE2__
@@ -40,12 +40,12 @@ typedef struct
   int strides[3];
 } block_info_t;
 
-static void pointwise_multiply_complex(size_t size, fftw_complex *a, const fftw_complex *b);
+static void pointwise_multiply_complex(size_t size, rs_complex *a, const rs_complex *b);
 static void pointwise_multiply_real(size_t size, double *a, const double *b);
 
 void deinterleave_real(size_t size, const double *in, double *rout, double *iout);
 void interleave_real(size_t size, double *out, const double *even, const double *odd);
-void complex_to_product(const size_t size, const fftw_complex *in, double *out);
+void complex_to_product(const size_t size, const rs_complex *in, double *out);
 
 void get_block_info_coarse(const interpolate_properties_t *props, block_info_t *info);
 void get_block_info_fine(const interpolate_properties_t *props, block_info_t *info);
@@ -54,12 +54,12 @@ void get_block_info_real_recip_fine(const interpolate_properties_t *props, block
 
 void populate_properties(interpolate_properties_t *props, interpolation_t type, size_t n0, size_t n1, size_t n2);
 void pad_coarse_to_fine_interleaved(interpolate_properties_t *props,
-  const block_info_t *from_info, const fftw_complex *from,
-  const block_info_t *to_info, fftw_complex *to,
+  const block_info_t *from_info, const rs_complex *from,
+  const block_info_t *to_info, rs_complex *to,
   int positive_only);
 void copy_real(const block_info_t *from_info, const double *from,
   const block_info_t *to_info, double *to);
-void halve_nyquist_components(interpolate_properties_t *props, block_info_t *block_info, fftw_complex *coarse);
+void halve_nyquist_components(interpolate_properties_t *props, block_info_t *block_info, rs_complex *coarse);
 
 double time_interpolate_interleaved(interpolate_plan plan, const int *dims);
 double time_interpolate_split(interpolate_plan plan, const int *dims);
@@ -67,7 +67,7 @@ double time_interpolate_split_product(interpolate_plan plan, const int *dims);
 
 void setup_threading(void);
 
-static inline void pointwise_multiply_complex(size_t size, fftw_complex *a, const fftw_complex *b)
+static inline void pointwise_multiply_complex(size_t size, rs_complex *a, const rs_complex *b)
 {
 #ifdef __SSE2__
   if ((((uintptr_t) b | (uintptr_t) a) & SSE_ALIGN_MASK) == 0)
@@ -136,12 +136,6 @@ static inline size_t corner_size(const size_t n, const int negative)
 {
   // In the even case, this will duplicate the Nyquist in both blocks
   return n / 2 + (negative == 0);
-}
-
-static inline void fftw_destroy_plan_maybe_null(fftw_plan plan)
-{
-  if (plan != NULL)
-    fftw_destroy_plan(plan);
 }
 
 #endif

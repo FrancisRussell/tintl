@@ -2,8 +2,8 @@
 #include <float.h>
 #include <assert.h>
 #include <stdlib.h>
-#include <fftw3.h>
 #include <interpolate.h>
+#include <forward.h>
 #include "common.h"
 #include <naive.h>
 #include <padding_aware.h>
@@ -17,7 +17,7 @@ const char *interpolate_get_name(const interpolate_plan plan)
   return plan->get_name(plan->detail);
 }
 
-void interpolate_execute_interleaved(const interpolate_plan plan, fftw_complex *in, fftw_complex *out)
+void interpolate_execute_interleaved(const interpolate_plan plan, rs_complex *in, rs_complex *out)
 {
   plan->execute_interleaved(plan->detail, in, out);
 }

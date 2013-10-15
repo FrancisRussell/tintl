@@ -1,6 +1,5 @@
 #include "allocation.h"
-#include <complex.h>
-#include <fftw3.h>
+#include "forward.h"
 #include <stdlib.h>
 #include <stdint.h>
 
@@ -33,9 +32,9 @@ double *rs_alloc_real(size_t size)
   return (double*) rs_alloc(size * sizeof(double));
 }
 
-fftw_complex *rs_alloc_complex(size_t size)
+rs_complex *rs_alloc_complex(size_t size)
 {
-  return (fftw_complex*) rs_alloc(size * sizeof(fftw_complex));
+  return (rs_complex*) rs_alloc(size * sizeof(rs_complex));
 }
 
 void rs_free(void *data)

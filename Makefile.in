@@ -46,13 +46,13 @@ lib/%/common.o: lib/common.h
 lib/%/interpolate.o: include/timer.h include/interpolate.h
 
 lib/%/naive.o: include/interpolate.h include/naive.h include/timer.h \
-  include/allocation.h lib/common.h include/fftw_cycle.h
+  include/allocation.h lib/common.h include/fftw_cycle.h lib/fftw_utility.h
 
 lib/%/padding_aware.o: include/interpolate.h include/padding_aware.h include/timer.h \
-  include/allocation.h lib/common.h include/fftw_cycle.h
+  include/allocation.h lib/common.h include/fftw_cycle.h lib/fftw_utility.h
 
 lib/%/phase_shift.c: include/interpolate.h include/phase_shift.h include/timer.h \
-  include/allocation.h include/fftw_cycle.h lib/common.h
+  include/allocation.h include/fftw_cycle.h lib/common.h lib/fftw_utility.h
 
 lib/%/plan_cache.o: lib/plan_cache.h
 

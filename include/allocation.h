@@ -4,8 +4,7 @@
 /// \file
 /// Aligned emory allocation routines.
 
-#include <complex.h>
-#include <fftw3.h>
+#include "forward.h"
 #include <stdlib.h>
 
 /// Allocates a 16-byte aligned region of doubles.
@@ -14,7 +13,7 @@ double *rs_alloc_real(size_t size);
 
 /// Allocates a 16-byte aligned region of complex doubles.
 /// @param size number of elements
-fftw_complex *rs_alloc_complex(size_t size);
+rs_complex *rs_alloc_complex(size_t size);
 
 
 /// Frees memory allocated with either rs_alloc_real or rs_alloc_complex.
