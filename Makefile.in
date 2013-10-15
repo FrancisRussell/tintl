@@ -1,5 +1,7 @@
 CC = @CC@
 FC = @FC@
+NVCC = nvcc
+HAVE_CUDA = @HAVE_CUDA@
 HAVE_OPENMP = @HAVE_OPENMP@
 FFTW_LDLIBS = @FFTW_LDLIBS@
 FFTW_INCLUDES = @FFTW_INCLUDES@
@@ -7,6 +9,7 @@ FFTW_LDFLAGS= @FFTW_LDFLAGS@
 COMMON_FLAGS = -Wall -pedantic -O3 -fPIC $(FFTW_INCLUDES) -Iinclude
 CFLAGS = $(COMMON_FLAGS)
 FFLAGS = $(COMMON_FLAGS)
+LINKER = $(CC)
 
 ifeq ($(HAVE_OPENMP), 1)
 OPENMP_CFLAGS = @OPENMP_CFLAGS@
@@ -15,21 +18,49 @@ endif
 LIB_SOURCES = allocation.c common.c interpolate.c naive.c padding_aware.c \
 	      phase_shift.c plan_cache.c timer.c
 
+LIB_LDFLAGS = -fPIC $(OPENMP_CFLAGS) $(FFTW_LDFLAGS)
+LIB_LDLIBS = $(FFTW_LDLIBS)
+
+BIN_LDFLAGS = -Llib -rpath=../lib -rpath=./lib
+BIN_LDLIBS = -lresample
+
+ifeq ($(HAVE_CUDA), yes)
+
+LIB_SOURCES += naive_cuda.cu
+
+FILTERED_CFLAGS := $(CFLAGS)
+FILTERED_CFLAGS := $(FILTERED_CFLAGS:-Wall=)
+FILTERED_CFLAGS := $(FILTERED_CFLAGS:-pedantic=)
+NVCCFLAGS := $(FILTERED_CFLAGS:%=-Xcompiler %) -arch=compute_13 -code=compute_13,sm_13,sm_20
+
+LIB_LDFLAGS := $(LIB_LDFLAGS:%=-Xlinker %)
+LIB_LDLIBS += -lcudart -lcufft
+
+BIN_LDFLAGS := $(BIN_LDFLAGS:%=-Xlinker %)
+LINKER = $(NVCC)
+
+else
+ 
+LIB_LDFLAGS := $(LIB_LDFLAGS:%=-Wl,%)
+BIN_LDFLAGS := $(BIN_LDFLAGS:%=-Wl,%)
+
+endif
+
 default: lib/libresample.so bin/benchmark
 
 bin/benchmark.o: include/timer.h include/allocation.h include/interpolate.h \
   include/phase_shift.h include/naive.h include/padding_aware.h
 
 ifeq ($(HAVE_OPENMP), 1)
-lib/libresample.so: $(patsubst %.c, lib/omp/%.o, $(LIB_SOURCES))
-	$(CC) -shared -fPIC $(OPENMP_CFLAGS) $(FFTW_LDFLAGS) $^ -o $@ $(FFTW_LDLIBS)
+lib/libresample.so: $(patsubst %.cu, lib/omp/%.o, $(patsubst %.c, lib/omp/%.o, $(LIB_SOURCES)))
+	$(LINKER) -shared $(LIB_LDFLAGS) $^ -o $@ $(LIB_LDLIBS)
 else
-lib/libresample.so: $(patsubst %.c, lib/st/%.o, $(LIB_SOURCES))
-	$(CC) -shared -fPIC $(FFTW_LDFLAGS) $^ -o $@ $(FFTW_LDLIBS)
+lib/libresample.so: $(patsubst %.cu, lib/st/%.o, $(patsubst %.c, lib/st/%.o, $(LIB_SOURCES)))
+	$(LINKER) -shared $(LIB_LDFLAGS) $^ -o $@ $(LIB_LDLIBS)
 endif
 
 bin/%: bin/%.o lib/libresample.so
-	$(CC) $< -o $@ -Llib -lresample -Wl,-rpath=../lib -Wl,-rpath=./lib
+	$(LINKER) $(BIN_LDFLAGS) $< -o $@ $(BIN_LDLIBS)
 
 lib/st/%.o: lib/%.c
 	mkdir -p lib/st
@@ -37,7 +68,15 @@ lib/st/%.o: lib/%.c
 
 lib/omp/%.o: lib/%.c
 	mkdir -p lib/omp
-	$(CC) -c $(CFLAGS) $(OPENMP_CFLAGS) $< -o $@ 
+	$(CC) -c $(CFLAGS) $< -o $@ 
+
+lib/st/%.o: lib/%.cu
+	mkdir -p lib/st
+	$(NVCC) $(NVCCFLAGS) -c $< -o $@ 
+
+lib/omp/%.o: lib/%.cu
+	mkdir -p lib/omp
+	$(NVCC) $(NVCCFLAGS) -c $< -o $@ 
 
 lib/%/allocation.o: include/allocation.h
 

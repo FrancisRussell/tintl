@@ -6,8 +6,17 @@
 #include <forward.h>
 #include <interpolate.h>
 
+#ifdef __CUDACC__
+#undef __SSE2__
+#endif
+
 #ifdef __SSE2__
 #include <emmintrin.h>
+#endif
+
+#ifdef __cplusplus
+extern "C"
+{
 #endif
 
 enum
@@ -15,7 +24,6 @@ enum
   SSE_ALIGN = 1 << 4,
   SSE_ALIGN_MASK = SSE_ALIGN - 1
 };
-
 
 /// Enumeration of the different types of supported interpolation.
 typedef enum
@@ -137,5 +145,9 @@ static inline size_t corner_size(const size_t n, const int negative)
   // In the even case, this will duplicate the Nyquist in both blocks
   return n / 2 + (negative == 0);
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

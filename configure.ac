@@ -10,6 +10,7 @@ AC_CONFIG_HEADERS([include/interpolate_config.h])
 AC_PROG_CC
 AC_PROG_CC_STDC
 AC_PROG_FC
+AC_CHECK_PROG(HAVE_CUDA, nvcc, "yes", "no")
 
 # Checks for FFTW's cycle counter header
 AC_C_INLINE
