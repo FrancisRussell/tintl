@@ -1,8 +1,15 @@
+#include "naive_cuda.h"
 #include "interpolate.h"
 #include "timer.h"
 #include "common.h"
 #include "forward.h"
+#include "common_cuda.h"
+#include <complex.h>
+#include <cuda_runtime.h>
+#include <cufft.h>
 #include <assert.h>
+
+#include <cuda_runtime_api.h>
 
 typedef enum
 {
@@ -17,10 +24,10 @@ typedef struct
   interpolate_properties_t props;
   strategy_t strategy;
 
-  /*
-  fftw_plan interleaved_forward;
-  fftw_plan interleaved_backward;
+  cufftHandle interleaved_forward;
+  cufftHandle interleaved_backward;
 
+  /*
   fftw_plan real_forward;
   fftw_plan real_backward;
 
@@ -77,13 +84,7 @@ static interpolate_plan allocate_plan(void)
 
 static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)
 {
-  /*
   populate_properties(&plan->props, type, n0, n1, n2);
-
-  const size_t block_size = num_elements(&plan->props);
-
-  rs_complex *const scratch_coarse = rs_alloc_complex(block_size);
-  rs_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
 
   block_info_t coarse_info, fine_info;
   get_block_info_coarse(&plan->props, &coarse_info);
@@ -91,19 +92,13 @@ static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, i
 
   int rev_dims[] = { coarse_info.dims[2], coarse_info.dims[1], coarse_info.dims[0] };
   int rev_fine_dims[] = { fine_info.dims[2], fine_info.dims[1], fine_info.dims[0] };
+  cufftResult res;
 
-  plan->real_forward = NULL;
-  plan->real_backward = NULL;
+  res = cufftPlanMany(&plan->interleaved_forward, 3, rev_dims, NULL, 1, 0, NULL, 1, 0, CUFFT_Z2Z, 1);
+  assert(res == CUFFT_SUCCESS);
 
-  plan->interleaved_forward = fftw_plan_dft(3, rev_dims, scratch_coarse, scratch_coarse, FFTW_FORWARD, flags);
-  plan->interleaved_backward = fftw_plan_dft(3, rev_fine_dims, scratch_fine, scratch_fine, FFTW_BACKWARD, flags);
-
-  assert(plan->interleaved_forward != NULL);
-  assert(plan->interleaved_backward != NULL);
-
-  rs_free(scratch_coarse);
-  rs_free(scratch_fine);
-  */
+  res = cufftPlanMany(&plan->interleaved_backward, 3, rev_fine_dims, NULL, 1, 0, NULL, 1, 0, CUFFT_Z2Z, 1);
+  assert(res == CUFFT_SUCCESS);
 }
 
 interpolate_plan interpolate_plan_3d_naive_cuda_interleaved(int n0, int n1, int n2, int flags)
@@ -111,13 +106,10 @@ interpolate_plan interpolate_plan_3d_naive_cuda_interleaved(int n0, int n1, int 
   interpolate_plan wrapper = allocate_plan();
   naive_plan plan = (naive_plan) wrapper->detail;
 
-  /*
-  flags |= FFTW_MEASURE;
   plan_common(plan, INTERLEAVED, n0, n1, n2, flags);
   plan->strategy = PACKED;
 
   return wrapper;
-  */
 }
 
 interpolate_plan interpolate_plan_3d_naive_cuda_split(int n0, int n1, int n2, int flags)
@@ -187,31 +179,64 @@ interpolate_plan interpolate_plan_3d_naive_cuda_product(int n0, int n1, int n2, 
 
 static void naive_interpolate_destroy_detail(void *detail)
 {
-  /*
   naive_plan plan = (naive_plan) detail;
 
-  fftw_destroy_plan(plan->interleaved_forward);
-  fftw_destroy_plan(plan->interleaved_backward);
+  cufftDestroy(plan->interleaved_forward);
+  cufftDestroy(plan->interleaved_backward);
 
+  /*
   fftw_destroy_plan_maybe_null(plan->real_forward);
   fftw_destroy_plan_maybe_null(plan->real_backward);
+  */
 
   free(plan);
-  */
 }
 
 static void naive_interpolate_execute_interleaved(const void *detail, rs_complex *in, rs_complex *out)
 {
-  /*
   naive_plan plan = (naive_plan) detail;
   assert(plan->strategy == PACKED);
 
   block_info_t coarse_info, fine_info;
   get_block_info_coarse(&plan->props, &coarse_info);
   get_block_info_fine(&plan->props, &fine_info);
-
   const size_t block_size = num_elements_block(&coarse_info);
-  rs_complex *const input_copy = rs_alloc_complex(block_size);
+
+  rs_complex *dev_in, *dev_out;
+  cudaError_t cudaRes;
+  cufftResult fftRes;
+
+  cudaRes = cudaMalloc((void**) &dev_in, sizeof(rs_complex) * block_size);
+  assert(cudaRes == cudaSuccess);
+
+  cudaRes = cudaMalloc((void**) &dev_out, sizeof(rs_complex) * block_size * 8);
+  assert(cudaRes == cudaSuccess);
+
+  cudaRes = cudaMemcpy(dev_in, in, sizeof(rs_complex) * block_size, cudaMemcpyHostToDevice);
+  assert(cudaRes == cudaSuccess);
+
+  fftRes = cufftExecZ2Z(plan->interleaved_forward, (cuDoubleComplex*) dev_in, (cuDoubleComplex*) dev_in, CUFFT_FORWARD);
+  assert(fftRes == CUFFT_SUCCESS);
+
+  halve_nyquist_components_cuda(&plan->props, &coarse_info, (cuDoubleComplex*) dev_in);
+  pad_coarse_to_fine_interleaved_cuda(&plan->props, &coarse_info, (cuDoubleComplex*) dev_in, &fine_info, (cuDoubleComplex*) dev_out, 0);
+
+  cudaRes = cudaFree(dev_in);
+  assert(cudaRes == cudaSuccess);
+
+  fftRes = cufftExecZ2Z(plan->interleaved_backward, (cuDoubleComplex*) dev_out, (cuDoubleComplex*) dev_out, CUFFT_INVERSE);
+  assert(fftRes == CUFFT_SUCCESS);
+
+  cudaRes = cudaMemcpy(out, dev_out, sizeof(rs_complex) * block_size * 8, cudaMemcpyDeviceToHost);
+  assert(cudaRes == cudaSuccess);
+
+  cudaRes = cudaDeviceSynchronize();
+  assert(cudaRes == cudaSuccess);
+
+  cudaRes = cudaFree(dev_out);
+  assert(cudaRes == cudaSuccess);
+  /*
+  fftw_complex *const input_copy = rs_alloc_complex(block_size);
 
   memcpy(input_copy, in, sizeof(rs_complex) * block_size);
   time_point_save(&plan->before_forward);

@@ -22,11 +22,11 @@ LIB_LDFLAGS = -fPIC $(OPENMP_CFLAGS) $(FFTW_LDFLAGS)
 LIB_LDLIBS = $(FFTW_LDLIBS)
 
 BIN_LDFLAGS = -Llib -rpath=../lib -rpath=./lib
-BIN_LDLIBS = -lresample
+BIN_LDLIBS = -lresample -lm
 
 ifeq ($(HAVE_CUDA), yes)
 
-LIB_SOURCES += naive_cuda.cu
+LIB_SOURCES += naive_cuda.cu common_cuda.cu
 
 FILTERED_CFLAGS := $(CFLAGS)
 FILTERED_CFLAGS := $(FILTERED_CFLAGS:-Wall=)
@@ -46,16 +46,18 @@ BIN_LDFLAGS := $(BIN_LDFLAGS:%=-Wl,%)
 
 endif
 
+LIB_OBJECTS = $(patsubst %.cu, lib/omp/%.o, $(patsubst %.c, lib/omp/%.o, $(LIB_SOURCES)))
+
 default: lib/libresample.so bin/benchmark
 
 bin/benchmark.o: include/timer.h include/allocation.h include/interpolate.h \
   include/phase_shift.h include/naive.h include/padding_aware.h
 
 ifeq ($(HAVE_OPENMP), 1)
-lib/libresample.so: $(patsubst %.cu, lib/omp/%.o, $(patsubst %.c, lib/omp/%.o, $(LIB_SOURCES)))
+lib/libresample.so: $(LIB_OBJECTS)
 	$(LINKER) -shared $(LIB_LDFLAGS) $^ -o $@ $(LIB_LDLIBS)
 else
-lib/libresample.so: $(patsubst %.cu, lib/st/%.o, $(patsubst %.c, lib/st/%.o, $(LIB_SOURCES)))
+lib/libresample.so: $(LIB_OBJECTS)
 	$(LINKER) -shared $(LIB_LDFLAGS) $^ -o $@ $(LIB_LDLIBS)
 endif
 
@@ -82,10 +84,14 @@ lib/%/allocation.o: include/allocation.h
 
 lib/%/common.o: lib/common.h
 
+lib/%/common_cuda.o: lib/common_cuda.h
+
 lib/%/interpolate.o: include/timer.h include/interpolate.h
 
 lib/%/naive.o: include/interpolate.h include/naive.h include/timer.h \
   include/allocation.h lib/common.h include/fftw_cycle.h lib/fftw_utility.h
+
+lib/%/naive_cuda.o: include/interpolate.h include/naive_cuda.h lib/common.h
 
 lib/%/padding_aware.o: include/interpolate.h include/padding_aware.h include/timer.h \
   include/allocation.h lib/common.h include/fftw_cycle.h lib/fftw_utility.h

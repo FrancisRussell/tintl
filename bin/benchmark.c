@@ -4,6 +4,7 @@
 #include "padding_aware.h"
 #include "phase_shift.h"
 #include "naive.h"
+#include "naive_cuda.h"
 #include <complex.h>
 #include <fftw3.h>
 #include <stdlib.h>
@@ -298,6 +299,7 @@ int main(int argc, char **argv)
       interpolate_plan_3d_naive_interleaved,
       interpolate_plan_3d_padding_aware_interleaved,
       interpolate_plan_3d_phase_shift_interleaved,
+      interpolate_plan_3d_naive_cuda_interleaved,
       NULL
     };
 
