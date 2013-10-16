@@ -112,7 +112,8 @@ void pad_coarse_to_fine_interleaved_cuda(interpolate_properties_t *props,
 
         dim3 grid(corner_sizes[1], corner_sizes[2]);
         dim3 block(corner_sizes[0]);
-        block_copy_coarse_to_fine_interleaved<<<grid, block>>>(*from_info, coarse_block, *to_info, fine_block, scale_factor);
+        if (corner_sizes[2] > 0 && corner_sizes[1] > 0 && corner_sizes[0] > 0)
+          block_copy_coarse_to_fine_interleaved<<<grid, block>>>(*from_info, coarse_block, *to_info, fine_block, scale_factor);
       }
     }
   }

@@ -91,7 +91,8 @@ lib/%/interpolate.o: include/timer.h include/interpolate.h
 lib/%/naive.o: include/interpolate.h include/naive.h include/timer.h \
   include/allocation.h lib/common.h include/fftw_cycle.h lib/fftw_utility.h
 
-lib/%/naive_cuda.o: include/interpolate.h include/naive_cuda.h lib/common.h
+lib/%/naive_cuda.o: include/interpolate.h include/naive_cuda.h lib/common.h \
+  include/allocation.h
 
 lib/%/padding_aware.o: include/interpolate.h include/padding_aware.h include/timer.h \
   include/allocation.h lib/common.h include/fftw_cycle.h lib/fftw_utility.h

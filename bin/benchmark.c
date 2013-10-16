@@ -311,6 +311,7 @@ int main(int argc, char **argv)
       interpolate_plan_3d_naive_split,
       interpolate_plan_3d_padding_aware_split,
       interpolate_plan_3d_phase_shift_split,
+      interpolate_plan_3d_naive_cuda_split,
       NULL
     };
 
