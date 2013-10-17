@@ -41,6 +41,8 @@ typedef struct
   cufftHandle n1_backward_real;
   cufftHandle n0_backward_real;
 
+  int has_real_plans;
+
   time_point_t before;
   time_point_t after;
 } pa_plan_s;
@@ -100,8 +102,14 @@ static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int 
   res = cufftPlanMany(&plan->interleaved_forward, 3, rev_dims, NULL, 1, 0, NULL, 1, 0, CUFFT_Z2Z, 1);
   assert(res == CUFFT_SUCCESS);
 
+  // For small FFT sizes, some corners may be size zero, which CUFFT dislikes.
+  for(int corner = 0; corner < 2; ++corner)
+  {
+    plan->n2_backward_interleaved_needed[corner] = (corner_size(plan->props.dims[0], corner) != 0);
+    plan->n1_backward_interleaved_needed[corner] = (corner_size(plan->props.dims[0], corner) != 0);
+  }
+
   // Interpolation in direction 2, iteration in direction 0, positive frequencies
-  plan->n2_backward_interleaved_needed[0] = (corner_size(plan->props.dims[0], 0) != 0);
   if (plan->n2_backward_interleaved_needed[0])
   {
     res = cufftPlanMany(&plan->n2_backward_interleaved[0], 1, &fine_info.dims[2],
@@ -112,7 +120,6 @@ static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int 
   }
 
   // Interpolation in direction 2, iteration in direction 0, negative frequencies
-  plan->n2_backward_interleaved_needed[1] = (corner_size(plan->props.dims[0], 1) != 0);
   if (plan->n2_backward_interleaved_needed[1])
   {
     res = cufftPlanMany(&plan->n2_backward_interleaved[1], 1, &fine_info.dims[2],
@@ -123,7 +130,6 @@ static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int 
   }
 
   // Interpolation in direction 1, iteration in direction 0, positive frequencies
-  plan->n1_backward_interleaved_needed[0] = (corner_size(plan->props.dims[0], 0) != 0);
   if (plan->n1_backward_interleaved_needed[0])
   {
     res = cufftPlanMany(&plan->n1_backward_interleaved[0], 1, &fine_info.dims[1],
@@ -134,7 +140,6 @@ static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int 
   }
 
   // Interpolation in direction 1, iteration in direction 0, negative frequencies
-  plan->n1_backward_interleaved_needed[1] = (corner_size(plan->props.dims[0], 1) != 0);
   if (plan->n1_backward_interleaved_needed[1])
   {
     res = cufftPlanMany(&plan->n1_backward_interleaved[1], 1, &fine_info.dims[1],
@@ -150,6 +155,8 @@ static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int 
       &fine_info.dims[0], fine_info.strides[0], fine_info.strides[1],
       CUFFT_Z2Z, fine_info.dims[1] * fine_info.dims[2]);
   assert(res == CUFFT_SUCCESS);
+
+  plan->has_real_plans = 0;
 }
 
 interpolate_plan interpolate_plan_3d_padding_aware_cuda_interleaved(int n0, int n1, int n2, int flags)
@@ -165,11 +172,9 @@ interpolate_plan interpolate_plan_3d_padding_aware_cuda_interleaved(int n0, int 
 
 interpolate_plan interpolate_plan_3d_padding_aware_cuda_split(int n0, int n1, int n2, int flags)
 {
-  /*
   interpolate_plan wrapper = allocate_plan();
   pa_plan plan = (pa_plan) wrapper->detail;
 
-  flags |= FFTW_MEASURE;
   plan_common(plan, SPLIT, n0, n1, n2, flags);
 
   block_info_t coarse_info, fine_info, transformed_coarse_info, transformed_fine_info;
@@ -178,44 +183,40 @@ interpolate_plan interpolate_plan_3d_padding_aware_cuda_split(int n0, int n1, in
   get_block_info_real_recip_coarse(&plan->props, &transformed_coarse_info);
   get_block_info_real_recip_fine(&plan->props, &transformed_fine_info);
 
-  const size_t block_size = num_elements_block(&coarse_info);
-  const size_t transformed_size_coarse = num_elements_block(&transformed_coarse_info);
-  const size_t transformed_size_fine = num_elements_block(&transformed_fine_info);
-
-  double *const scratch_coarse_real = rs_alloc_real(block_size);
-  rs_complex *const scratch_coarse_complex = rs_alloc_complex(transformed_size_coarse);
-
-  rs_complex *const scratch_fine_complex = rs_alloc_complex(transformed_size_fine);
-  double *const scratch_fine_real = rs_alloc_real(8 * block_size);
-
   int rev_dims[] = { plan->props.dims[2], plan->props.dims[1], plan->props.dims[0] };
-  plan->real_forward = fftw_plan_dft_r2c(3, rev_dims, scratch_coarse_real, scratch_coarse_complex, flags);
+  cufftResult fftRes = CUFFT_SUCCESS;
+
+  fftRes = cufftPlanMany(&plan->real_forward, 3, rev_dims, NULL, 1, 0, NULL, 1, 0, CUFFT_D2Z, 1);
+  assert(fftRes == CUFFT_SUCCESS);
 
   // Interpolation in direction 2, iteration in direction 0, positive frequencies
-  plan->n2_backward_real = fftw_plan_many_dft(1, &transformed_fine_info.dims[2], corner_size(plan->props.dims[0], 0),
-      scratch_fine_complex, NULL, transformed_fine_info.strides[2], transformed_fine_info.strides[0],
-      scratch_fine_complex, NULL, transformed_fine_info.strides[2], transformed_fine_info.strides[0],
-      FFTW_BACKWARD, flags);
-  assert(plan->n2_backward_real != NULL);
+  if (plan->n2_backward_interleaved_needed[0])
+  {
+    fftRes = cufftPlanMany(&plan->n2_backward_real, 1, &transformed_fine_info.dims[2],
+      &transformed_fine_info.dims[2], transformed_fine_info.strides[2], transformed_fine_info.strides[0],
+      &transformed_fine_info.dims[2], transformed_fine_info.strides[2], transformed_fine_info.strides[0],
+      CUFFT_Z2Z, corner_size(plan->props.dims[0], 0));
+    assert(fftRes == CUFFT_SUCCESS);
+  }
 
   // Interpolation in direction 1, iteration in direction 0, positive frequencies
-  plan->n1_backward_real = fftw_plan_many_dft(1, &transformed_fine_info.dims[1], corner_size(plan->props.dims[0], 0),
-      scratch_fine_complex, NULL, transformed_fine_info.strides[1], transformed_fine_info.strides[0],
-      scratch_fine_complex, NULL, transformed_fine_info.strides[1], transformed_fine_info.strides[0],
-      FFTW_BACKWARD, flags);
-  assert(plan->n1_backward_real != NULL);
+  if (plan->n2_backward_interleaved_needed[0])
+  {
+    fftRes = cufftPlanMany(&plan->n1_backward_real, 1, &transformed_fine_info.dims[1],
+        &transformed_fine_info.dims[1], transformed_fine_info.strides[1], transformed_fine_info.strides[0],
+        &transformed_fine_info.dims[1], transformed_fine_info.strides[1], transformed_fine_info.strides[0],
+        CUFFT_Z2Z, corner_size(plan->props.dims[0], 0));
+    assert(fftRes == CUFFT_SUCCESS);
+  }
 
   // Interpolation in direction 0, iteration in direction 1, all frequencies
-  plan->n0_backward_real = fftw_plan_many_dft_c2r(1, &fine_info.dims[0], fine_info.dims[1] * fine_info.dims[2],
-      scratch_fine_complex, NULL, transformed_fine_info.strides[0], transformed_fine_info.strides[1],
-      scratch_fine_real,    NULL, fine_info.strides[0],             fine_info.strides[1],
-      flags);
-  assert(plan->n0_backward_real != NULL);
+  fftRes = cufftPlanMany(&plan->n0_backward_real, 1, &fine_info.dims[0], 
+      &fine_info.dims[0], transformed_fine_info.strides[0], transformed_fine_info.strides[1],
+      &fine_info.dims[0], fine_info.strides[0],             fine_info.strides[1],
+      CUFFT_Z2D, fine_info.dims[1] * fine_info.dims[2]);
+  assert(fftRes == CUFFT_SUCCESS);
 
-  rs_free(scratch_coarse_real);
-  rs_free(scratch_coarse_complex);
-  rs_free(scratch_fine_real);
-  rs_free(scratch_fine_complex);
+  plan->has_real_plans = 1;
 
   plan->strategy = SEPARATE;
   const double separate_time = time_interpolate_split(wrapper, plan->props.dims);
@@ -224,7 +225,6 @@ interpolate_plan interpolate_plan_3d_padding_aware_cuda_split(int n0, int n1, in
   plan->strategy = (separate_time < packed_time) ? SEPARATE : PACKED;
 
   return wrapper;
-  */
 }
 
 interpolate_plan interpolate_plan_3d_padding_aware_cuda_product(int n0, int n1, int n2, int flags)
@@ -261,12 +261,13 @@ static void pa_interpolate_destroy_detail(void *detail)
 
   cufftDestroy(plan->n0_backward_interleaved);
 
-  /*
-  fftw_destroy_plan_maybe_null(plan->real_forward);
-  fftw_destroy_plan_maybe_null(plan->n2_backward_real);
-  fftw_destroy_plan_maybe_null(plan->n1_backward_real);
-  fftw_destroy_plan_maybe_null(plan->n0_backward_real);
-  */
+  if (plan->has_real_plans)
+  {
+    cufftDestroy(plan->real_forward);
+    cufftDestroy(plan->n2_backward_real);
+    cufftDestroy(plan->n1_backward_real);
+    cufftDestroy(plan->n0_backward_real);
+  }
 
   free(plan);
 }
@@ -328,44 +329,46 @@ static void backward_transform_c2c(const pa_plan plan, const block_info_t *data_
 }
 
 static void backward_transform_c2r(const pa_plan plan,
-  const block_info_t *from_info, rs_complex *from,
+  const block_info_t *from_info, cuDoubleComplex *from,
   const block_info_t *to_info, double *to)
 {
-  /*
   size_t corner_sizes[3][2];
 
   for(int negative = 0; negative < 2; ++negative)
     for(int dim = 0; dim < 3; ++dim)
       corner_sizes[dim][negative] = corner_size(plan->props.dims[dim], negative);
 
+  cufftResult fftRes = CUFFT_SUCCESS;
+
   // Interpolation in direction 2
   for(size_t y = 0; y < corner_sizes[1][0]; ++y)
   {
-    rs_complex *positive_start = from + y * from_info->strides[1];
-    fftw_execute_dft(plan->n2_backward_real, positive_start, positive_start);
+    cuDoubleComplex *positive_start = from + y * from_info->strides[1];
+    if (plan->n2_backward_interleaved_needed[0])
+      fftRes = cufftExecZ2Z(plan->n2_backward_real, positive_start, positive_start, CUFFT_INVERSE);
+    assert(fftRes == CUFFT_SUCCESS);
   }
 
   for(size_t y = to_info->dims[1] - corner_sizes[1][1]; y < to_info->dims[1]; ++y)
   {
-    rs_complex *positive_start = from + y * from_info->strides[1];
-    fftw_execute_dft(plan->n2_backward_real, positive_start, positive_start);
+    cuDoubleComplex *positive_start = from + y * from_info->strides[1];
+    if (plan->n2_backward_interleaved_needed[0])
+      fftRes = cufftExecZ2Z(plan->n2_backward_real, positive_start, positive_start, CUFFT_INVERSE);
+    assert(fftRes == CUFFT_SUCCESS);
   }
-
-  time_point_save(&plan->after_backward[2]);
 
   // Interpolation in direction 1
   for(size_t z = 0; z < from_info->dims[2]; ++z)
   {
-    rs_complex *positive_start = from + z * from_info->strides[2];
-    fftw_execute_dft(plan->n1_backward_real, positive_start, positive_start);
+    cuDoubleComplex *positive_start = from + z * from_info->strides[2];
+    if (plan->n1_backward_interleaved_needed[0])
+      fftRes = cufftExecZ2Z(plan->n1_backward_real, positive_start, positive_start, CUFFT_INVERSE);
+    assert(fftRes == CUFFT_SUCCESS);
   }
 
-  time_point_save(&plan->after_backward[1]);
-
   // Interpolation in direction 0
-  fftw_execute_dft_c2r(plan->n0_backward_real, from, to);
-  time_point_save(&plan->after_backward[0]);
-  */
+  fftRes = cufftExecZ2D(plan->n0_backward_real, from, to);
+  assert(fftRes == CUFFT_SUCCESS);
 }
 
 static void pa_interpolate_execute_interleaved(const void *detail, rs_complex *in, rs_complex *out)
@@ -404,34 +407,43 @@ static void pa_interpolate_execute_interleaved(const void *detail, rs_complex *i
 
 static void pa_interpolate_real(pa_plan plan, double *in, double *out)
 {
-  /*
-  block_info_t transformed_coarse_info, transformed_fine_info, fine_info;
+  block_info_t coarse_info, fine_info, transformed_coarse_info, transformed_fine_info;
+  get_block_info_coarse(&plan->props, &coarse_info);
+  get_block_info_fine(&plan->props, &fine_info);
   get_block_info_real_recip_coarse(&plan->props, &transformed_coarse_info);
   get_block_info_real_recip_fine(&plan->props, &transformed_fine_info);
-  get_block_info_fine(&plan->props, &fine_info);
 
+  const size_t block_size = num_elements_block(&coarse_info);
   const size_t transformed_size_coarse = num_elements_block(&transformed_coarse_info);
   const size_t transformed_size_fine = num_elements_block(&transformed_fine_info);
 
-  rs_complex *const scratch_coarse = rs_alloc_complex(transformed_size_coarse);
-  rs_complex *const scratch_fine = rs_alloc_complex(transformed_size_fine);
+  thrust::device_vector<double> dev_in(block_size);
+  thrust::device_vector<cuDoubleComplex> scratch_coarse(transformed_size_coarse);
+  thrust::device_vector<cuDoubleComplex> scratch_fine(transformed_size_fine);
+  thrust::device_vector<double> dev_out(block_size * 8);
+  cudaError_t cudaRes;
+  cufftResult fftRes;
 
-  time_point_save(&plan->before_forward);
-  fftw_execute_dft_r2c(plan->real_forward, in, scratch_coarse);
-  time_point_save(&plan->after_forward);
-  halve_nyquist_components(&plan->props, &transformed_coarse_info, scratch_coarse);
-  pad_coarse_to_fine_interleaved(&plan->props, &transformed_coarse_info, scratch_coarse, &transformed_fine_info, scratch_fine, 1);
-  time_point_save(&plan->after_padding);
-  backward_transform_c2r(plan, &transformed_fine_info, scratch_fine, &fine_info, out);
+  cudaRes = cudaMemcpy(thrust::raw_pointer_cast(&dev_in[0]), in, sizeof(double) * block_size, cudaMemcpyHostToDevice);
+  assert(cudaRes == cudaSuccess);
 
-  rs_free(scratch_coarse);
-  rs_free(scratch_fine);
-  */
+  fftRes = cufftExecD2Z(plan->real_forward, thrust::raw_pointer_cast(&dev_in[0]), thrust::raw_pointer_cast(&scratch_coarse[0]));
+  assert(fftRes == CUFFT_SUCCESS);
+
+  halve_nyquist_components_cuda(&plan->props, &transformed_coarse_info, thrust::raw_pointer_cast(&scratch_coarse[0]));
+  pad_coarse_to_fine_interleaved_cuda(&plan->props, 
+    &transformed_coarse_info, thrust::raw_pointer_cast(&scratch_coarse[0]), 
+    &transformed_fine_info,   thrust::raw_pointer_cast(&scratch_fine[0]), 1);
+
+  backward_transform_c2r(plan, &transformed_fine_info, thrust::raw_pointer_cast(&scratch_fine[0]), 
+    &fine_info, thrust::raw_pointer_cast(&dev_out[0]));
+
+  cudaRes = cudaMemcpy(out, thrust::raw_pointer_cast(&dev_out[0]), sizeof(double) * block_size * 8, cudaMemcpyDeviceToHost);
+  assert(cudaRes == cudaSuccess);
 }
 
 static void pa_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout)
 {
-  /*
   pa_plan plan = (pa_plan) detail;
   assert(SPLIT == plan->props.type || SPLIT_PRODUCT == plan->props.type);
 
@@ -446,28 +458,24 @@ static void pa_interpolate_execute_split(const void *detail, double *rin, double
     rs_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
 
     interleave_real(block_size, (double*) scratch_coarse, rin, iin);
-    time_point_save(&plan->before_forward);
-    fftw_execute_dft(plan->interleaved_forward, scratch_coarse, scratch_coarse);
-    time_point_save(&plan->after_forward);
-    halve_nyquist_components(&plan->props, &coarse_info, scratch_coarse);
-    pad_coarse_to_fine_interleaved(&plan->props, &coarse_info, scratch_coarse, &fine_info, scratch_fine, 0);
-    time_point_save(&plan->after_padding);
-    backward_transform_c2c(plan, &fine_info, scratch_fine);
+    pa_interpolate_execute_interleaved(detail, scratch_coarse, scratch_fine);
     deinterleave_real(8 * block_size, (const double*) scratch_fine, rout, iout);
 
-    rs_free(scratch_coarse);
     rs_free(scratch_fine);
+    rs_free(scratch_coarse);
   }
   else if (plan->strategy == SEPARATE)
   {
     pa_interpolate_real(plan, rin, rout);
     pa_interpolate_real(plan, iin, iout);
+
+    cudaError_t cudaRes = cudaDeviceSynchronize();
+    assert(cudaRes == cudaSuccess);
   }
   else
   {
     assert(0 && "Unkown strategy");
   }
-  */
 }
 
 void pa_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out)
