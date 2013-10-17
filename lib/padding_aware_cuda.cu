@@ -252,8 +252,11 @@ static void pa_interpolate_destroy_detail(void *detail)
 
   for(int corner = 0; corner < 2; ++corner)
   {
-    cufftDestroy(plan->n2_backward_interleaved[corner]);
-    cufftDestroy(plan->n1_backward_interleaved[corner]);
+    if (plan->n2_backward_interleaved_needed[corner])
+      cufftDestroy(plan->n2_backward_interleaved[corner]);
+
+    if (plan->n1_backward_interleaved_needed[corner])
+      cufftDestroy(plan->n1_backward_interleaved[corner]);
   }
 
   cufftDestroy(plan->n0_backward_interleaved);
