@@ -1,4 +1,5 @@
 #include <thrust/device_vector.h>
+#include <thrust/transform.h>
 #include "interpolate.h"
 #include "padding_aware_cuda.h"
 #include "timer.h"
@@ -229,8 +230,7 @@ interpolate_plan interpolate_plan_3d_padding_aware_cuda_split(int n0, int n1, in
 
 interpolate_plan interpolate_plan_3d_padding_aware_cuda_product(int n0, int n1, int n2, int flags)
 {
-  /*
-  interpolate_plan wrapper = interpolate_plan_3d_padding_aware_split(n0, n1, n2, flags);
+  interpolate_plan wrapper = interpolate_plan_3d_padding_aware_cuda_split(n0, n1, n2, flags);
   pa_plan plan = (pa_plan) wrapper->detail;
   plan->props.type = SPLIT_PRODUCT;
 
@@ -241,7 +241,6 @@ interpolate_plan interpolate_plan_3d_padding_aware_cuda_product(int n0, int n1, 
   plan->strategy = (separate_time < packed_time) ? SEPARATE : PACKED;
 
   return wrapper;
-  */
 }
 
 static void pa_interpolate_destroy_detail(void *detail)
@@ -405,7 +404,7 @@ static void pa_interpolate_execute_interleaved(const void *detail, rs_complex *i
   assert(cudaRes == cudaSuccess);
 }
 
-static void pa_interpolate_real(pa_plan plan, double *in, double *out)
+static void pa_interpolate_real(pa_plan plan, double *in, const thrust::device_ptr<double>& dev_out)
 {
   block_info_t coarse_info, fine_info, transformed_coarse_info, transformed_fine_info;
   get_block_info_coarse(&plan->props, &coarse_info);
@@ -420,7 +419,6 @@ static void pa_interpolate_real(pa_plan plan, double *in, double *out)
   thrust::device_vector<double> dev_in(block_size);
   thrust::device_vector<cuDoubleComplex> scratch_coarse(transformed_size_coarse);
   thrust::device_vector<cuDoubleComplex> scratch_fine(transformed_size_fine);
-  thrust::device_vector<double> dev_out(block_size * 8);
   cudaError_t cudaRes;
   cufftResult fftRes;
 
@@ -436,10 +434,7 @@ static void pa_interpolate_real(pa_plan plan, double *in, double *out)
     &transformed_fine_info,   thrust::raw_pointer_cast(&scratch_fine[0]), 1);
 
   backward_transform_c2r(plan, &transformed_fine_info, thrust::raw_pointer_cast(&scratch_fine[0]), 
-    &fine_info, thrust::raw_pointer_cast(&dev_out[0]));
-
-  cudaRes = cudaMemcpy(out, thrust::raw_pointer_cast(&dev_out[0]), sizeof(double) * block_size * 8, cudaMemcpyDeviceToHost);
-  assert(cudaRes == cudaSuccess);
+    &fine_info, thrust::raw_pointer_cast(dev_out));
 }
 
 static void pa_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout)
@@ -466,10 +461,23 @@ static void pa_interpolate_execute_split(const void *detail, double *rin, double
   }
   else if (plan->strategy == SEPARATE)
   {
-    pa_interpolate_real(plan, rin, rout);
-    pa_interpolate_real(plan, iin, iout);
+    block_info_t fine_info;
+    get_block_info_fine(&plan->props, &fine_info);
+    const size_t fine_block_size = num_elements_block(&fine_info);
+    cudaError_t cudaRes;
 
-    cudaError_t cudaRes = cudaDeviceSynchronize();
+    thrust::device_vector<double> dev_out_r(fine_block_size);
+    thrust::device_vector<double> dev_out_i(fine_block_size);
+
+    pa_interpolate_real(plan, rin, &dev_out_r[0]);
+    pa_interpolate_real(plan, iin, &dev_out_i[0]);
+
+    cudaRes = cudaMemcpy(rout, thrust::raw_pointer_cast(&dev_out_r[0]), sizeof(double) * fine_block_size, cudaMemcpyDeviceToHost);
+    assert(cudaRes == cudaSuccess);
+    cudaRes = cudaMemcpy(iout, thrust::raw_pointer_cast(&dev_out_i[0]), sizeof(double) * fine_block_size, cudaMemcpyDeviceToHost);
+    assert(cudaRes == cudaSuccess);
+
+    cudaRes = cudaDeviceSynchronize();
     assert(cudaRes == cudaSuccess);
   }
   else
@@ -480,7 +488,6 @@ static void pa_interpolate_execute_split(const void *detail, double *rin, double
 
 void pa_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out)
 {
-  /*
   pa_plan plan = (pa_plan) detail;
   assert(SPLIT_PRODUCT == plan->props.type);
   const size_t block_size = num_elements(&plan->props);
@@ -499,12 +506,25 @@ void pa_interpolate_execute_split_product(const void *detail, double *rin, doubl
   }
   else if (plan->strategy == SEPARATE)
   {
-    double *const scratch_fine = rs_alloc_real(8 * block_size);
-    pa_interpolate_execute_split(detail, rin, iin, out, scratch_fine);
-    pointwise_multiply_real(8 * block_size, out, scratch_fine);
-    rs_free(scratch_fine);
+    block_info_t fine_info;
+    get_block_info_fine(&plan->props, &fine_info);
+    const size_t fine_block_size = num_elements_block(&fine_info);
+    cudaError_t cudaRes;
+
+    thrust::device_vector<double> dev_out_r(fine_block_size);
+    thrust::device_vector<double> dev_out_i(fine_block_size);
+
+    pa_interpolate_real(plan, rin, &dev_out_r[0]);
+    pa_interpolate_real(plan, iin, &dev_out_i[0]);
+
+    thrust::transform(dev_out_r.begin(), dev_out_r.end(), dev_out_i.begin(), dev_out_r.begin(), thrust::plus<double>());
+
+    cudaRes = cudaMemcpy(out, thrust::raw_pointer_cast(&dev_out_r[0]), sizeof(double) * block_size * 8, cudaMemcpyDeviceToHost);
+    assert(cudaRes == cudaSuccess);
+
+    cudaRes = cudaDeviceSynchronize();
+    assert(cudaRes == cudaSuccess);
   }
-  */
 }
 
 void pa_interpolate_print_timings(const void *detail)
