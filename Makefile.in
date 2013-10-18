@@ -7,13 +7,15 @@ FFTW_LDLIBS = @FFTW_LDLIBS@
 FFTW_INCLUDES = @FFTW_INCLUDES@
 FFTW_LDFLAGS= @FFTW_LDFLAGS@
 COMMON_FLAGS = -Wall -pedantic -O3 -fPIC $(FFTW_INCLUDES) -Iinclude
-CFLAGS = $(COMMON_FLAGS)
-FFLAGS = $(COMMON_FLAGS)
-LINKER = $(CC)
 
 ifeq ($(HAVE_OPENMP), 1)
 OPENMP_CFLAGS = @OPENMP_CFLAGS@
+COMMON_FLAGS += $(OPENMP_CFLAGS)
 endif
+
+CFLAGS = $(COMMON_FLAGS)
+FFLAGS = $(COMMON_FLAGS)
+LINKER = $(CC)
 
 LIB_SOURCES = allocation.c common.c interpolate.c naive.c padding_aware.c \
 	      phase_shift.c plan_cache.c timer.c
