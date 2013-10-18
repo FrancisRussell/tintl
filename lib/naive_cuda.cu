@@ -192,15 +192,13 @@ static void naive_interpolate_execute_interleaved(const void *detail, rs_complex
   get_block_info_fine(&plan->props, &fine_info);
   const size_t block_size = num_elements_block(&coarse_info);
 
-  cudaError_t cudaRes;
   cufftResult fftRes;
   thrust::device_vector<cuDoubleComplex> dev_in(block_size);
   thrust::device_vector<cuDoubleComplex> dev_out(block_size * 8);
 
   time_point_save(&plan->before);
 
-  cudaRes = cudaMemcpy(thrust::raw_pointer_cast(&dev_in[0]), in, sizeof(rs_complex) * block_size, cudaMemcpyHostToDevice);
-  assert(cudaRes == cudaSuccess);
+  CUDA_CHECK(cudaMemcpy(thrust::raw_pointer_cast(&dev_in[0]), in, sizeof(rs_complex) * block_size, cudaMemcpyHostToDevice));
 
   fftRes = cufftExecZ2Z(plan->interleaved_forward, thrust::raw_pointer_cast(&dev_in[0]), thrust::raw_pointer_cast(&dev_in[0]), CUFFT_FORWARD);
   assert(fftRes == CUFFT_SUCCESS);
@@ -213,11 +211,9 @@ static void naive_interpolate_execute_interleaved(const void *detail, rs_complex
     thrust::raw_pointer_cast(&dev_out[0]), thrust::raw_pointer_cast(&dev_out[0]), CUFFT_INVERSE);
   assert(fftRes == CUFFT_SUCCESS);
 
-  cudaRes = cudaMemcpy(out, thrust::raw_pointer_cast(&dev_out[0]), sizeof(rs_complex) * block_size * 8, cudaMemcpyDeviceToHost);
-  assert(cudaRes == cudaSuccess);
+  CUDA_CHECK(cudaMemcpy(out, thrust::raw_pointer_cast(&dev_out[0]), sizeof(rs_complex) * block_size * 8, cudaMemcpyDeviceToHost));
 
-  cudaRes = cudaDeviceSynchronize();
-  assert(cudaRes == cudaSuccess);
+  CUDA_CHECK(cudaDeviceSynchronize());
 
   time_point_save(&plan->after);
 }
@@ -232,7 +228,6 @@ static void naive_interpolate_real(naive_plan plan, double *in, const thrust::de
   const size_t block_size = num_elements_block(&coarse_info);
   const size_t transformed_size_coarse = num_elements_block(&transformed_coarse_info);
   const size_t transformed_size_fine = num_elements_block(&transformed_fine_info);
-  cudaError_t cudaRes;
   cufftResult fftRes;
 
   time_point_save(&plan->before);
@@ -241,8 +236,7 @@ static void naive_interpolate_real(naive_plan plan, double *in, const thrust::de
   thrust::device_vector<cuDoubleComplex> scratch_coarse(transformed_size_coarse);
   thrust::device_vector<cuDoubleComplex> scratch_fine(transformed_size_fine);
 
-  cudaRes = cudaMemcpy(thrust::raw_pointer_cast(&dev_in[0]), in, sizeof(double) * block_size, cudaMemcpyHostToDevice);
-  assert(cudaRes == cudaSuccess);
+  CUDA_CHECK(cudaMemcpy(thrust::raw_pointer_cast(&dev_in[0]), in, sizeof(double) * block_size, cudaMemcpyHostToDevice));
 
   fftRes = cufftExecD2Z(plan->real_forward, thrust::raw_pointer_cast(&dev_in[0]), thrust::raw_pointer_cast(&scratch_coarse[0]));
   assert(fftRes == CUFFT_SUCCESS);
@@ -284,7 +278,6 @@ static void naive_interpolate_execute_split(const void *detail, double *rin, dou
     block_info_t coarse_info;
     get_block_info_coarse(&plan->props, &coarse_info);
     const size_t block_size = num_elements_block(&coarse_info);
-    cudaError_t cudaRes;
 
     thrust::device_vector<double> dev_out_r(block_size * 8);
     thrust::device_vector<double> dev_out_i(block_size * 8);
@@ -292,13 +285,9 @@ static void naive_interpolate_execute_split(const void *detail, double *rin, dou
     naive_interpolate_real(plan, rin, &dev_out_r[0]);
     naive_interpolate_real(plan, iin, &dev_out_i[0]);
 
-    cudaRes = cudaMemcpy(rout, thrust::raw_pointer_cast(&dev_out_r[0]), sizeof(double) * block_size * 8, cudaMemcpyDeviceToHost);
-    assert(cudaRes == cudaSuccess);
-    cudaRes = cudaMemcpy(iout, thrust::raw_pointer_cast(&dev_out_i[0]), sizeof(double) * block_size * 8, cudaMemcpyDeviceToHost);
-    assert(cudaRes == cudaSuccess);
-
-    cudaRes = cudaDeviceSynchronize();
-    assert(cudaRes == cudaSuccess);
+    CUDA_CHECK(cudaMemcpy(rout, thrust::raw_pointer_cast(&dev_out_r[0]), sizeof(double) * block_size * 8, cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(iout, thrust::raw_pointer_cast(&dev_out_i[0]), sizeof(double) * block_size * 8, cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaDeviceSynchronize());
   }
   else
   {
@@ -329,7 +318,6 @@ void naive_interpolate_execute_split_product(const void *detail, double *rin, do
     block_info_t coarse_info;
     get_block_info_coarse(&plan->props, &coarse_info);
     const size_t block_size = num_elements_block(&coarse_info);
-    cudaError_t cudaRes;
 
     thrust::device_vector<double> dev_out_r(block_size * 8);
     thrust::device_vector<double> dev_out_i(block_size * 8);
@@ -339,11 +327,8 @@ void naive_interpolate_execute_split_product(const void *detail, double *rin, do
 
     thrust::transform(dev_out_r.begin(), dev_out_r.end(), dev_out_i.begin(), dev_out_r.begin(), thrust::plus<double>());
 
-    cudaRes = cudaMemcpy(out, thrust::raw_pointer_cast(&dev_out_r[0]), sizeof(double) * block_size * 8, cudaMemcpyDeviceToHost);
-    assert(cudaRes == cudaSuccess);
-
-    cudaRes = cudaDeviceSynchronize();
-    assert(cudaRes == cudaSuccess);
+    CUDA_CHECK(cudaMemcpy(out, thrust::raw_pointer_cast(&dev_out_r[0]), sizeof(double) * block_size * 8, cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaDeviceSynchronize());
   }
   else
   {

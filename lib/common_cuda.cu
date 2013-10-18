@@ -2,6 +2,7 @@
 #include <cuComplex.h>
 #include "common_cuda.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 __global__ void scale_z(interpolate_properties_t props, block_info_t block_info, cuDoubleComplex *coarse)
 {
@@ -119,3 +120,11 @@ void pad_coarse_to_fine_interleaved_cuda(interpolate_properties_t *props,
   }
 }
 
+void printCudaDiagnostics(const cudaError_t code, const char *file, const int line)
+{
+  if (code != cudaSuccess)
+  {
+    fprintf(stderr, "A CUDA error code was returned in file %s at line %i: %s\n", file, line, cudaGetErrorString(code));
+    exit(EXIT_FAILURE);
+  }
+}
