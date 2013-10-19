@@ -92,13 +92,9 @@ static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, i
 
   int rev_dims[] = { coarse_info.dims[2], coarse_info.dims[1], coarse_info.dims[0] };
   int rev_fine_dims[] = { fine_info.dims[2], fine_info.dims[1], fine_info.dims[0] };
-  cufftResult res;
 
-  res = cufftPlanMany(&plan->interleaved_forward, 3, rev_dims, NULL, 1, 0, NULL, 1, 0, CUFFT_Z2Z, 1);
-  assert(res == CUFFT_SUCCESS);
-
-  res = cufftPlanMany(&plan->interleaved_backward, 3, rev_fine_dims, NULL, 1, 0, NULL, 1, 0, CUFFT_Z2Z, 1);
-  assert(res == CUFFT_SUCCESS);
+  CUFFT_CHECK(cufftPlanMany(&plan->interleaved_forward, 3, rev_dims, NULL, 1, 0, NULL, 1, 0, CUFFT_Z2Z, 1));
+  CUFFT_CHECK(cufftPlanMany(&plan->interleaved_backward, 3, rev_fine_dims, NULL, 1, 0, NULL, 1, 0, CUFFT_Z2Z, 1));
 
   plan->has_real_plans = 0;
 }
@@ -133,13 +129,9 @@ interpolate_plan interpolate_plan_3d_naive_cuda_split(int n0, int n1, int n2, in
 
   int rev_dims[] = { coarse_info.dims[2], coarse_info.dims[1], coarse_info.dims[0] };
   int rev_fine_dims[] = { fine_info.dims[2], fine_info.dims[1], fine_info.dims[0] };
-  cufftResult res;
 
-  res = cufftPlanMany(&plan->real_forward, 3, rev_dims, NULL, 1, 0, NULL, 1, 0, CUFFT_D2Z, 1);
-  assert(res == CUFFT_SUCCESS);
-
-  res = cufftPlanMany(&plan->real_backward, 3, rev_fine_dims, NULL, 1, 0, NULL, 1, 0, CUFFT_Z2D, 1);
-  assert(res == CUFFT_SUCCESS);
+  CUFFT_CHECK(cufftPlanMany(&plan->real_forward, 3, rev_dims, NULL, 1, 0, NULL, 1, 0, CUFFT_D2Z, 1));
+  CUFFT_CHECK(cufftPlanMany(&plan->real_backward, 3, rev_fine_dims, NULL, 1, 0, NULL, 1, 0, CUFFT_Z2D, 1));
 
   plan->strategy = SEPARATE;
   const double separate_time = time_interpolate_split(wrapper, plan->props.dims);
@@ -192,7 +184,6 @@ static void naive_interpolate_execute_interleaved(const void *detail, rs_complex
   get_block_info_fine(&plan->props, &fine_info);
   const size_t block_size = num_elements_block(&coarse_info);
 
-  cufftResult fftRes;
   thrust::device_vector<cuDoubleComplex> dev_in(block_size);
   thrust::device_vector<cuDoubleComplex> dev_out(block_size * 8);
 
@@ -202,16 +193,14 @@ static void naive_interpolate_execute_interleaved(const void *detail, rs_complex
   CUDA_CHECK(cudaMemcpy(thrust::raw_pointer_cast(&dev_in[0]), in, sizeof(rs_complex) * block_size, cudaMemcpyHostToDevice));
   CUDA_CHECK(cudaHostUnregister(in));
 
-  fftRes = cufftExecZ2Z(plan->interleaved_forward, thrust::raw_pointer_cast(&dev_in[0]), thrust::raw_pointer_cast(&dev_in[0]), CUFFT_FORWARD);
-  assert(fftRes == CUFFT_SUCCESS);
+  CUFFT_CHECK(cufftExecZ2Z(plan->interleaved_forward, thrust::raw_pointer_cast(&dev_in[0]), thrust::raw_pointer_cast(&dev_in[0]), CUFFT_FORWARD));
 
   halve_nyquist_components_cuda(&plan->props, &coarse_info, thrust::raw_pointer_cast(&dev_in[0]));
   pad_coarse_to_fine_interleaved_cuda(&plan->props, 
     &coarse_info, thrust::raw_pointer_cast(&dev_in[0]), &fine_info, thrust::raw_pointer_cast(&dev_out[0]), 0);
 
-  fftRes = cufftExecZ2Z(plan->interleaved_backward, 
-    thrust::raw_pointer_cast(&dev_out[0]), thrust::raw_pointer_cast(&dev_out[0]), CUFFT_INVERSE);
-  assert(fftRes == CUFFT_SUCCESS);
+  CUFFT_CHECK(cufftExecZ2Z(plan->interleaved_backward, 
+    thrust::raw_pointer_cast(&dev_out[0]), thrust::raw_pointer_cast(&dev_out[0]), CUFFT_INVERSE));
 
   CUDA_CHECK(cudaHostRegister(out, sizeof(rs_complex) * block_size * 8, 0));
   CUDA_CHECK(cudaMemcpy(out, thrust::raw_pointer_cast(&dev_out[0]), sizeof(rs_complex) * block_size * 8, cudaMemcpyDeviceToHost));
@@ -232,7 +221,6 @@ static void naive_interpolate_real(naive_plan plan, double *in, const thrust::de
   const size_t block_size = num_elements_block(&coarse_info);
   const size_t transformed_size_coarse = num_elements_block(&transformed_coarse_info);
   const size_t transformed_size_fine = num_elements_block(&transformed_fine_info);
-  cufftResult fftRes;
 
   time_point_save(&plan->before);
 
@@ -244,15 +232,13 @@ static void naive_interpolate_real(naive_plan plan, double *in, const thrust::de
   CUDA_CHECK(cudaMemcpy(thrust::raw_pointer_cast(&dev_in[0]), in, sizeof(double) * block_size, cudaMemcpyHostToDevice));
   CUDA_CHECK(cudaHostUnregister(in));
 
-  fftRes = cufftExecD2Z(plan->real_forward, thrust::raw_pointer_cast(&dev_in[0]), thrust::raw_pointer_cast(&scratch_coarse[0]));
-  assert(fftRes == CUFFT_SUCCESS);
+  CUFFT_CHECK(cufftExecD2Z(plan->real_forward, thrust::raw_pointer_cast(&dev_in[0]), thrust::raw_pointer_cast(&scratch_coarse[0])));
 
   halve_nyquist_components_cuda(&plan->props, &transformed_coarse_info, thrust::raw_pointer_cast(&scratch_coarse[0]));
   pad_coarse_to_fine_interleaved_cuda(&plan->props, 
     &transformed_coarse_info, thrust::raw_pointer_cast(&scratch_coarse[0]), &transformed_fine_info, thrust::raw_pointer_cast(&scratch_fine[0]), 1);
 
-  fftRes = cufftExecZ2D(plan->real_backward, thrust::raw_pointer_cast(&scratch_fine[0]), thrust::raw_pointer_cast(dev_out));
-  assert(fftRes == CUFFT_SUCCESS);
+  CUFFT_CHECK(cufftExecZ2D(plan->real_backward, thrust::raw_pointer_cast(&scratch_fine[0]), thrust::raw_pointer_cast(dev_out)));
 
   time_point_save(&plan->after);
 }

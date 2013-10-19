@@ -1,4 +1,5 @@
 #include <cuComplex.h>
+#include <cufft.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -6,6 +7,7 @@ extern "C"
 #endif
 
 #define CUDA_CHECK(err) printCudaDiagnostics( err, __FILE__, __LINE__)
+#define CUFFT_CHECK(err) printCuFFTDiagnostics( err, __FILE__, __LINE__)
 
 void halve_nyquist_components_cuda(interpolate_properties_t *props, block_info_t *block_info, cuDoubleComplex *coarse);
 
@@ -15,6 +17,7 @@ void pad_coarse_to_fine_interleaved_cuda(interpolate_properties_t *props,
   const int positive_only);
 
 void printCudaDiagnostics(cudaError_t code, const char *file, int line);
+void printCuFFTDiagnostics(cufftResult code, const char *file, int line);
 
 #ifdef __cplusplus
 }

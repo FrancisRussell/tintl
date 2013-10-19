@@ -1,6 +1,7 @@
 #include "common.h"
-#include <cuComplex.h>
 #include "common_cuda.h"
+#include <cuComplex.h>
+#include <cufft.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -125,6 +126,15 @@ void printCudaDiagnostics(const cudaError_t code, const char *file, const int li
   if (code != cudaSuccess)
   {
     fprintf(stderr, "A CUDA error code was returned in file %s at line %i: %s\n", file, line, cudaGetErrorString(code));
+    exit(EXIT_FAILURE);
+  }
+}
+
+void printCuFFTDiagnostics(const cufftResult code, const char *file, const int line)
+{
+  if (code != CUFFT_SUCCESS)
+  {
+    fprintf(stderr, "A CUFFT error code was returned in file %s at line %i: %d\n", file, line, code);
     exit(EXIT_FAILURE);
   }
 }
