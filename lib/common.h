@@ -55,6 +55,7 @@ void deinterleave_real(size_t size, const double *in, double *rout, double *iout
 void interleave_real(size_t size, double *out, const double *even, const double *odd);
 void complex_to_product(const size_t size, const rs_complex *in, double *out);
 
+void populate_strides_unpadded(block_info_t *info);
 void get_block_info_coarse(const interpolate_properties_t *props, block_info_t *info);
 void get_block_info_fine(const interpolate_properties_t *props, block_info_t *info);
 void get_block_info_real_recip_coarse(const interpolate_properties_t *props, block_info_t *info);

@@ -327,15 +327,19 @@ void copy_real(const block_info_t *from_info, const double *from,
   }
 }
 
+void populate_strides_unpadded(block_info_t *info)
+{
+  info->strides[0] = 1;
+  info->strides[1] = info->dims[0];
+  info->strides[2] = info->dims[0] * info->dims[1];
+}
+
 void get_block_info_coarse(const interpolate_properties_t *props, block_info_t *info)
 {
   info->dims[0] = props->dims[0];
   info->dims[1] = props->dims[1];
   info->dims[2] = props->dims[2];
-
-  info->strides[0] = 1;
-  info->strides[1] = info->dims[0];
-  info->strides[2] = info->dims[0] * info->dims[1];
+  populate_strides_unpadded(info);
 }
 
 void get_block_info_fine(const interpolate_properties_t *props, block_info_t *info)
@@ -343,10 +347,7 @@ void get_block_info_fine(const interpolate_properties_t *props, block_info_t *in
   info->dims[0] = props->dims[0] * 2;
   info->dims[1] = props->dims[1] * 2;
   info->dims[2] = props->dims[2] * 2;
-
-  info->strides[0] = 1;
-  info->strides[1] = info->dims[0];
-  info->strides[2] = info->dims[0] * info->dims[1];
+  populate_strides_unpadded(info);
 }
 
 void get_block_info_real_recip_coarse(const interpolate_properties_t *props, block_info_t *info)
@@ -354,10 +355,7 @@ void get_block_info_real_recip_coarse(const interpolate_properties_t *props, blo
   info->dims[0] = props->dims[0] / 2 + 1;
   info->dims[1] = props->dims[1];
   info->dims[2] = props->dims[2];
-
-  info->strides[0] = 1;
-  info->strides[1] = info->dims[0];
-  info->strides[2] = info->dims[0] * info->dims[1];
+  populate_strides_unpadded(info);
 }
 
 void get_block_info_real_recip_fine(const interpolate_properties_t *props, block_info_t *info)
@@ -365,10 +363,7 @@ void get_block_info_real_recip_fine(const interpolate_properties_t *props, block
   info->dims[0] = props->dims[0] + 1;
   info->dims[1] = props->dims[1] * 2;
   info->dims[2] = props->dims[2] * 2;
-
-  info->strides[0] = 1;
-  info->strides[1] = info->dims[0];
-  info->strides[2] = info->dims[0] * info->dims[1];
+  populate_strides_unpadded(info);
 }
 
 void setup_threading(void)

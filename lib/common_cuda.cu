@@ -4,6 +4,7 @@
 #include <cufft.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 
 __global__ void scale_z(interpolate_properties_t props, block_info_t block_info, cuDoubleComplex *coarse)
 {
@@ -59,12 +60,57 @@ void halve_nyquist_components_cuda(interpolate_properties_t *props, block_info_t
   if (n2 % 2 == 0)
     scale_z<<<d1, d0>>>(*props, *block_info, (cuDoubleComplex*) coarse);
 
-  dim3 ySlice(d0, d2);
   if (n1 % 2 == 0)
     scale_y<<<d2, d1>>>(*props, *block_info, (cuDoubleComplex*) coarse);
 
   if (n0 % 2 == 0)
     scale_x<<<d2, d1>>>(*props, *block_info, (cuDoubleComplex*) coarse);
+}
+
+__device__ int calculate_offset(const block_info_t *info, const int *indices)
+{
+  return info->strides[2] * indices[2] + info->strides[1] * indices[1] + info->strides[0] * indices[0];
+}
+
+__global__ void copy_transposed_elements(block_info_t from_info, block_info_t to_info, const cuDoubleComplex *from, cuDoubleComplex *to, int count)
+{
+  int from_index[3], to_index[3];
+  from_index[0] = blockIdx.x * blockDim.x + threadIdx.x;
+  from_index[1] = blockIdx.y * blockDim.y + threadIdx.y;
+  from_index[2] = blockIdx.z * blockDim.z + threadIdx.z;
+
+  for(int dim = 0; dim < 3; ++dim)
+    to_index[(dim + count) % 3] = from_index[dim];
+
+  if (from_index[0] < from_info.dims[0] && from_index[1] < from_info.dims[1] && from_index[2] < from_info.dims[2])
+  {
+    const int from_offset = calculate_offset(&from_info, from_index);
+    const int to_offset = calculate_offset(&to_info, to_index);
+
+    to[to_offset] = from[from_offset];
+  }
+}
+
+void transpose_block_cuda(const block_info_t *from_info, const cuDoubleComplex *from, block_info_t *to_info, cuDoubleComplex *to, int count)
+{
+  if (count < 0)
+    count = (count % 3) + 3;
+  else
+    count %= 3;
+
+  assert(count >= 0 && count < 3);
+
+  for(int dim = 0; dim < 3; ++dim)
+    to_info->dims[(dim + count) % 3] = from_info->dims[dim];
+
+  populate_strides_unpadded(to_info);
+
+  const dim3 total_dim(from_info->dims[0], from_info->dims[1], from_info->dims[2]);
+  const dim3 block_dim(4, 4, 4);
+  dim3 grid_dim;
+
+  calcGridDim(total_dim, block_dim, grid_dim);
+  copy_transposed_elements<<<grid_dim, block_dim>>>(*from_info, *to_info, from, to, count);
 }
 
 __global__ void block_copy_coarse_to_fine_interleaved(
@@ -137,4 +183,11 @@ void printCuFFTDiagnostics(const cufftResult code, const char *file, const int l
     fprintf(stderr, "A CUFFT error code was returned in file %s at line %i: %d\n", file, line, code);
     exit(EXIT_FAILURE);
   }
+}
+
+void calcGridDim(const dim3& total_dim, const dim3& block_dim, dim3& grid_dim)
+{
+  grid_dim.x = (total_dim.x + block_dim.x - 1) / block_dim.x;
+  grid_dim.y = (total_dim.y + block_dim.y - 1) / block_dim.y;
+  grid_dim.z = (total_dim.z + block_dim.z - 1) / block_dim.z;
 }
