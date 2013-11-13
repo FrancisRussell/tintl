@@ -28,6 +28,8 @@ typedef struct
 {
   storage_layout_t layout;
   fftw_complex *interleaved;
+  size_t num_elements;
+
   struct
   {
     double *real;
@@ -52,6 +54,7 @@ static void storage_allocate(storage_t *storage, storage_layout_t layout, size_t
 {
   assert(storage != NULL);
   storage->layout = layout;
+  storage->num_elements = size;
 
   switch(layout)
   {
@@ -104,6 +107,24 @@ static void storage_set_elem(storage_t *storage, size_t offset, fftw_complex val
       fprintf(stderr, "Unknown storage type %d\n", storage->layout);
       exit(EXIT_FAILURE);
   }
+}
+
+static void storage_zero(storage_t *storage)
+{
+  switch(storage->layout)
+  {
+    case INTERLEAVED:
+      memset(storage->interleaved, 0, storage->num_elements * sizeof(double) * 2);
+      break;
+    case SPLIT:
+      memset(storage->split.real, 0, storage->num_elements * sizeof(double));
+      memset(storage->split.imag, 0, storage->num_elements * sizeof(double));
+      break;
+    default:
+      fprintf(stderr, "Unknown storage type %d\n", storage->layout);
+      exit(EXIT_FAILURE);
+  }
+
 }
 
 static void execute_interpolate(interpolate_plan plan, storage_t *in, storage_t *out)
@@ -283,6 +304,7 @@ static void benchmark(FILE *file, storage_layout_t layout, plan_constructor_t *c
       double time = 0.0;
       time_point_t begin_interpolate, end_interpolate;
       interpolate_plan plan = constructors[plan_type](x_width, y_width, z_width, 0);
+      storage_zero(&fine);
 
       for(int run = 0; run < runs; ++run)
       {
