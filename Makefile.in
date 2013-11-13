@@ -43,6 +43,7 @@ LINKER = $(NVCC)
 
 else
  
+LIB_SOURCES += cuda_stubs.c
 LIB_LDFLAGS := $(LIB_LDFLAGS:%=-Wl,%)
 BIN_LDFLAGS := $(BIN_LDFLAGS:%=-Wl,%)
 
