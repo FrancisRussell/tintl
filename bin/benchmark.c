@@ -234,13 +234,25 @@ static void benchmark(FILE *file, storage_layout_t layout, plan_constructor_t *c
   while(constructors[plan_type_count] != NULL)
     ++plan_type_count;
 
+  int *const use_plans = malloc(sizeof(int) * plan_type_count);
+  assert(use_plans != NULL);
+
   fprintf(file, "#data layout: %s\n", layout_name(layout));
   fprintf(file, size_format_string, "#size");
   for(int i=0; i < plan_type_count; ++i)
   {
     interpolate_plan plan = constructors[i](1, 1, 1, 0);
-    fprintf(file, timing_format_string, interpolate_get_name(plan));
-    interpolate_destroy_plan(plan);
+
+    if (plan != NULL)
+    {
+      fprintf(file, timing_format_string, interpolate_get_name(plan));
+      interpolate_destroy_plan(plan);
+      use_plans[i] = 1;
+    }
+    else
+    {
+      use_plans[i] = 0;
+    }
   }
 
   fprintf(file, "\n");
@@ -265,6 +277,9 @@ static void benchmark(FILE *file, storage_layout_t layout, plan_constructor_t *c
 
     for(int plan_type = 0; plan_type < plan_type_count; ++plan_type)
     {
+      if (use_plans[plan_type] == 0)
+        continue;
+
       double time = 0.0;
       time_point_t begin_interpolate, end_interpolate;
       interpolate_plan plan = constructors[plan_type](x_width, y_width, z_width, 0);
@@ -290,6 +305,8 @@ static void benchmark(FILE *file, storage_layout_t layout, plan_constructor_t *c
 
     fprintf(file, "\n");
   }
+
+  free(use_plans);
 }
 
 int main(int argc, char **argv)
