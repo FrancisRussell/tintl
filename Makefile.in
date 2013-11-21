@@ -20,10 +20,12 @@ LINKER = $(CC)
 LIB_SOURCES = allocation.c common.c interpolate.c naive.c padding_aware.c \
 	      phase_shift.c plan_cache.c timer.c
 
-LIB_LDFLAGS = -fPIC $(OPENMP_CFLAGS) $(FFTW_LDFLAGS)
+LIB_LDFLAGS_LINKER =
+LIB_LDFLAGS_COMPILER = -fPIC $(OPENMP_CFLAGS) $(FFTW_LDFLAGS)
 LIB_LDLIBS = $(FFTW_LDLIBS)
 
-BIN_LDFLAGS = -Llib -rpath=../lib -rpath=./lib
+BIN_LDFLAGS_LINKER = -rpath=../lib -rpath=./lib
+BIN_LDFLAGS_COMPILER = -Llib
 BIN_LDLIBS = -lresample -lm
 
 ifeq ($(HAVE_CUDA), yes)
@@ -35,19 +37,24 @@ FILTERED_CFLAGS := $(FILTERED_CFLAGS:-Wall=)
 FILTERED_CFLAGS := $(FILTERED_CFLAGS:-pedantic=)
 NVCCFLAGS := $(FILTERED_CFLAGS:%=-Xcompiler %) -arch=compute_13 -code=compute_13,sm_13,sm_20
 
-LIB_LDFLAGS := $(LIB_LDFLAGS:%=-Xlinker %)
+LIB_LDFLAGS_LINKER := $(LIB_LDFLAGS_LINKER:%=-Xlinker %)
+LIB_LDFLAGS_COMPILER := $(LIB_LDFLAGS_COMPILER:%=-Xcompiler %)
 LIB_LDLIBS += -lcudart -lcufft
 
-BIN_LDFLAGS := $(BIN_LDFLAGS:%=-Xlinker %)
+BIN_LDFLAGS_LINKER := $(BIN_LDFLAGS_LINKER:%=-Xlinker %)
+BIN_LDFLAGS_COMPILER := $(BIN_LDFLAGS_COMPILER:%=-Xcompiler %)
 LINKER = $(NVCC)
 
 else
- 
+
 LIB_SOURCES += cuda_stubs.c
-LIB_LDFLAGS := $(LIB_LDFLAGS:%=-Wl,%)
-BIN_LDFLAGS := $(BIN_LDFLAGS:%=-Wl,%)
+LIB_LDFLAGS_LINKER := $(LIB_LDFLAGS_LINKER:%=-Wl,%)
+BIN_LDFLAGS_LINKER := $(BIN_LDFLAGS_LINKER:%=-Wl,%)
 
 endif
+
+BIN_LDFLAGS = $(BIN_LDFLAGS_COMPILER) $(BIN_LDFLAGS_LINKER)
+LIB_LDFLAGS = $(LIB_LDFLAGS_COMPILER) $(LIB_LDFLAGS_LINKER)
 
 LIB_OBJECTS = $(patsubst %.cu, lib/omp/%.o, $(patsubst %.c, lib/omp/%.o, $(LIB_SOURCES)))
 
@@ -70,19 +77,19 @@ bin/%: bin/%.o lib/libresample.so
 
 lib/st/%.o: lib/%.c
 	mkdir -p lib/st
-	$(CC) -c $(CFLAGS) $< -o $@ 
+	$(CC) -c $(CFLAGS) $< -o $@
 
 lib/omp/%.o: lib/%.c
 	mkdir -p lib/omp
-	$(CC) -c $(CFLAGS) $< -o $@ 
+	$(CC) -c $(CFLAGS) $< -o $@
 
 lib/st/%.o: lib/%.cu
 	mkdir -p lib/st
-	$(NVCC) $(NVCCFLAGS) -c $< -o $@ 
+	$(NVCC) $(NVCCFLAGS) -c $< -o $@
 
 lib/omp/%.o: lib/%.cu
 	mkdir -p lib/omp
-	$(NVCC) $(NVCCFLAGS) -c $< -o $@ 
+	$(NVCC) $(NVCCFLAGS) -c $< -o $@
 
 lib/%/allocation.o: include/allocation.h
 
@@ -111,8 +118,8 @@ lib/%/plan_cache.o: lib/plan_cache.h
 
 lib/%/timer.o: include/timer.h
 
-clean: 
-	rm -rf lib/st lib/omp 
+clean:
+	rm -rf lib/st lib/omp
 	rm -f lib/*.o lib/*.so bin/*.o bin/benchmark
 
 .PHONY: default clean
