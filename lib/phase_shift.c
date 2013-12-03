@@ -833,7 +833,7 @@ static void phase_shift_interpolate_execute_split(const void *detail, double *ri
 
   if (plan->packing_strategy == SEPARATE)
   {
-    const size_t rounded_block_size = round_align(block_size);
+    const size_t rounded_block_size = round_align(block_size * sizeof(double)) / sizeof(double);
     double *const block_data = rs_alloc_real(2 * 7 * rounded_block_size);
     double *blocks[2][8];
 
@@ -905,7 +905,8 @@ void phase_shift_interpolate_execute_split_product(const void *detail, double *r
   }
   else if (plan->packing_strategy == SEPARATE)
   {
-    double *const scratch_fine = rs_alloc_real(8 * block_size);
+    const size_t rounded_block_size = round_align(block_size * sizeof(double)) / sizeof(double);
+    double *const scratch_fine = rs_alloc_real(8 * rounded_block_size);
     phase_shift_interpolate_execute_split(detail, rin, iin, out, scratch_fine);
     pointwise_multiply_real(8 * block_size, out, scratch_fine);
     rs_free(scratch_fine);
