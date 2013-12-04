@@ -278,7 +278,7 @@ static void benchmark(FILE *file, storage_layout_t layout, plan_constructor_t *c
 
   fprintf(file, "\n");
 
-  for(int size = 7; size < 100; size += 2)
+  for(int size = 7; size <= 120; ++size)
   {
     const int runs = 10;
 
