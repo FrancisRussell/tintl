@@ -1,7 +1,7 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-AC_PREREQ([2.68])
+AC_PREREQ([2.63])
 AC_INIT([libresample], [0.1], [fpr02@doc.ic.ac.uk])
 AC_CONFIG_SRCDIR([lib/interpolate.c])
 AC_CONFIG_HEADERS([include/interpolate_config.h])
@@ -59,16 +59,16 @@ AC_ARG_WITH([mkl],
 
 # We need to call unset after each header check due to autoconf caching
 # header checking results irrespective of compiler flags.
-AX_CHECK_LIBRARY([FFTW3], [fftw3.h], [fftw3], 
-                 AC_MSG_NOTICE([Found FFTW3 (single-threaded)]), 
+AX_CHECK_LIBRARY([FFTW3], [fftw3.h], [fftw3],
+                 AC_MSG_NOTICE([Found FFTW3 (single-threaded)]),
                  [AC_MSG_NOTICE([Failed to find FFTW3 (single-threaded)]); unset AS_TR_SH(ac_cv_header_fftw3.h)])
 
-AX_CHECK_LIBRARY([FFTW3_OMP], [fftw3.h], [fftw3_omp], 
-                 AC_MSG_NOTICE([Found FFTW3 (OpenMP)]), 
+AX_CHECK_LIBRARY([FFTW3_OMP], [fftw3.h], [fftw3_omp],
+                 AC_MSG_NOTICE([Found FFTW3 (OpenMP)]),
                  [AC_MSG_NOTICE([Unable to find FFTW3 (OpenMP)]); unset AS_TR_SH(ac_cv_header_fftw3.h)])
 
-AX_CHECK_LIBRARY([MKL], [fftw3.h], [mkl_rt], 
-                 AC_MSG_NOTICE([Found Intel MKL]), 
+AX_CHECK_LIBRARY([MKL], [fftw3.h], [mkl_rt],
+                 AC_MSG_NOTICE([Found Intel MKL]),
                  [AC_MSG_NOTICE([Unable to find Intel MKL]); unset AS_TR_SH(ac_cv_header_fftw3.h)])
 
 if test "$ax_cv_have_MKL" == "yes"; then
