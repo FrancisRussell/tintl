@@ -43,6 +43,7 @@ static interpolate_plan allocate_plan(void);
 
 /* Interface functions */
 static const char *get_name(const void *detail);
+static void naive_set_flags(const void *detail, int flags);
 static void naive_interpolate_execute_interleaved(const void *detail, fftw_complex *in, fftw_complex *out);
 static void naive_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout);
 static void naive_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out);
@@ -69,6 +70,7 @@ static interpolate_plan allocate_plan(void)
   assert(holder->detail != NULL);
 
   holder->get_name = get_name;
+  holder->set_flags = naive_set_flags;
   holder->execute_interleaved = naive_interpolate_execute_interleaved;
   holder->execute_split = naive_interpolate_execute_split;
   holder->execute_split_product = naive_interpolate_execute_split_product;
@@ -105,6 +107,20 @@ static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, i
 
   rs_free(scratch_coarse);
   rs_free(scratch_fine);
+}
+
+static void naive_set_flags(const void *detail, const int flags)
+{
+  naive_plan plan = (naive_plan) detail;
+
+  const int conflicting_layouts = PREFER_PACKED_LAYOUT | PREFER_SPLIT_LAYOUT;
+  assert((flags & conflicting_layouts) != conflicting_layouts);
+
+  if (flags & PREFER_PACKED_LAYOUT)
+    plan->strategy = PACKED;
+
+  if (flags & PREFER_SPLIT_LAYOUT)
+    plan->strategy = SPLIT;
 }
 
 interpolate_plan interpolate_plan_3d_naive_interleaved(int n0, int n1, int n2, int flags)

@@ -6,6 +6,7 @@
 #include "naive.h"
 #include "naive_cuda.h"
 #include "padding_aware_cuda.h"
+#include "storage.h"
 #include <complex.h>
 #include <fftw3.h>
 #include <stdlib.h>
@@ -18,150 +19,70 @@ typedef interpolate_plan (*plan_constructor_t)(int n0, int n1, int n2, int flags
 
 static const double pi = 3.14159265358979323846;
 
-typedef enum
+static interpolate_plan interpolate_plan_3d_naive_split_split(int n0, int n1, int n2, int flags)
 {
-  INTERLEAVED,
-  SPLIT
-} storage_layout_t;
+  interpolate_plan plan = interpolate_plan_3d_naive_split(n0, n1, n2, flags);
 
-typedef struct
-{
-  storage_layout_t layout;
-  fftw_complex *interleaved;
-  size_t num_elements;
+  if (plan == NULL)
+    return NULL;
 
-  struct
-  {
-    double *real;
-    double *imag;
-  } split;
-} storage_t;
-
-static const char *layout_name(const storage_layout_t layout)
-{
-  switch(layout)
-  {
-    case INTERLEAVED:
-      return "interleaved";
-    case SPLIT:
-        return "split";
-    default:
-        return "unknown";
-  }
+  interpolate_set_flags(plan, PREFER_SPLIT_LAYOUT);
+  return plan;
 }
 
-static void storage_allocate(storage_t *storage, storage_layout_t layout, size_t size)
+static interpolate_plan interpolate_plan_3d_naive_split_packed(int n0, int n1, int n2, int flags)
 {
-  assert(storage != NULL);
-  storage->layout = layout;
-  storage->num_elements = size;
+  interpolate_plan plan = interpolate_plan_3d_naive_split(n0, n1, n2, flags);
 
-  switch(layout)
-  {
-    case INTERLEAVED:
-      storage->interleaved = rs_alloc_complex(size);
-      break;
-    case SPLIT:
-      storage->split.real = rs_alloc_real(size);
-      storage->split.imag = rs_alloc_real(size);
-      break;
-    default:
-      fprintf(stderr, "Unknown storage type %d\n", layout);
-      exit(EXIT_FAILURE);
-  }
+  if (plan == NULL)
+    return NULL;
+
+  interpolate_set_flags(plan, PREFER_PACKED_LAYOUT);
+  return plan;
 }
 
-static void storage_free(storage_t *storage)
+static interpolate_plan interpolate_plan_3d_padding_aware_split_split(int n0, int n1, int n2, int flags)
 {
-  assert(storage != NULL);
+  interpolate_plan plan = interpolate_plan_3d_padding_aware_split(n0, n1, n2, flags);
 
-  switch(storage->layout)
-  {
-    case INTERLEAVED:
-      rs_free(storage->interleaved);
-      break;
-    case SPLIT:
-      rs_free(storage->split.real);
-      rs_free(storage->split.imag);
-      break;
-    default:
-      fprintf(stderr, "Unknown storage type %d\n", storage->layout);
-      exit(EXIT_FAILURE);
-  }
+  if (plan == NULL)
+    return NULL;
+
+  interpolate_set_flags(plan, PREFER_SPLIT_LAYOUT);
+  return plan;
 }
 
-static void storage_set_elem(storage_t *storage, size_t offset, fftw_complex value)
+static interpolate_plan interpolate_plan_3d_padding_aware_split_packed(int n0, int n1, int n2, int flags)
 {
-  assert(storage != NULL);
+  interpolate_plan plan = interpolate_plan_3d_padding_aware_split(n0, n1, n2, flags);
 
-  switch(storage->layout)
-  {
-    case INTERLEAVED:
-      storage->interleaved[offset] = value;
-      break;
-    case SPLIT:
-      storage->split.real[offset] = creal(value);
-      storage->split.imag[offset] = cimag(value);
-      break;
-    default:
-      fprintf(stderr, "Unknown storage type %d\n", storage->layout);
-      exit(EXIT_FAILURE);
-  }
+  if (plan == NULL)
+    return NULL;
+
+  interpolate_set_flags(plan, PREFER_PACKED_LAYOUT);
+  return plan;
 }
 
-static void storage_zero(storage_t *storage)
+static interpolate_plan interpolate_plan_3d_phase_shift_split_split(int n0, int n1, int n2, int flags)
 {
-  switch(storage->layout)
-  {
-    case INTERLEAVED:
-      memset(storage->interleaved, 0, storage->num_elements * sizeof(double) * 2);
-      break;
-    case SPLIT:
-      memset(storage->split.real, 0, storage->num_elements * sizeof(double));
-      memset(storage->split.imag, 0, storage->num_elements * sizeof(double));
-      break;
-    default:
-      fprintf(stderr, "Unknown storage type %d\n", storage->layout);
-      exit(EXIT_FAILURE);
-  }
+  interpolate_plan plan = interpolate_plan_3d_phase_shift_split(n0, n1, n2, flags);
 
+  if (plan == NULL)
+    return NULL;
+
+  interpolate_set_flags(plan, PREFER_SPLIT_LAYOUT);
+  return plan;
 }
 
-static void execute_interpolate(interpolate_plan plan, storage_t *in, storage_t *out)
+static interpolate_plan interpolate_plan_3d_phase_shift_split_packed(int n0, int n1, int n2, int flags)
 {
-  assert(in != NULL);
-  assert(out != NULL);
-  assert(in->layout == out->layout);
+  interpolate_plan plan = interpolate_plan_3d_phase_shift_split(n0, n1, n2, flags);
 
-  switch(in->layout)
-  {
-    case INTERLEAVED:
-      interpolate_execute_interleaved(plan, in->interleaved, out->interleaved);
-      break;
-    case SPLIT:
-      interpolate_execute_split(plan, in->split.real, in->split.imag, out->split.real, out->split.imag);
-      break;
-    default:
-      fprintf(stderr, "Unknown storage type %d\n", in->layout);
-      exit(EXIT_FAILURE);
-  }
-}
+  if (plan == NULL)
+    return NULL;
 
-static fftw_complex storage_get_elem(const storage_t *storage, size_t offset)
-{
-  assert(storage != NULL);
-
-  switch(storage->layout)
-  {
-    case INTERLEAVED:
-      return storage->interleaved[offset];
-    case SPLIT:
-      return storage->split.real[offset] + storage->split.imag[offset] * I;
-      break;
-    default:
-      fprintf(stderr, "Unknown storage type %d\n", storage->layout);
-      exit(EXIT_FAILURE);
-  }
+  interpolate_set_flags(plan, PREFER_PACKED_LAYOUT);
+  return plan;
 }
 
 static fftw_complex test_function(double x, double y, double z)
@@ -357,6 +278,21 @@ int main(int argc, char **argv)
       NULL
     };
 
+    benchmark(stdout, SPLIT, split_constructors);
+  }
+  else if (argc > 1 && strcmp("--table-compare-layouts", argv[1]) == 0)
+  {
+    plan_constructor_t split_constructors[] = {
+      interpolate_plan_3d_naive_split_split,
+      interpolate_plan_3d_naive_split_packed,
+      interpolate_plan_3d_padding_aware_split_split,
+      interpolate_plan_3d_padding_aware_split_packed,
+      interpolate_plan_3d_phase_shift_split_split,
+      interpolate_plan_3d_phase_shift_split_packed,
+      NULL
+    };
+
+    fprintf(stdout, "#format order: split, packed\n");
     benchmark(stdout, SPLIT, split_constructors);
   }
   else

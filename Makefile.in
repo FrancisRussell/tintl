@@ -62,7 +62,7 @@ default: lib/libresample.so bin/benchmark
 
 bin/benchmark.o: include/timer.h include/allocation.h include/interpolate.h \
   include/phase_shift.h include/naive.h include/padding_aware.h \
-  include/naive_cuda.h include/padding_aware_cuda.h
+  include/naive_cuda.h include/padding_aware_cuda.h bin/storage.h
 
 ifeq ($(HAVE_OPENMP), 1)
 lib/libresample.so: $(LIB_OBJECTS)
@@ -72,8 +72,12 @@ lib/libresample.so: $(LIB_OBJECTS)
 	$(LINKER) -shared $(LIB_LDFLAGS) $^ -o $@ $(LIB_LDLIBS)
 endif
 
+bin/benchmark: bin/storage.o
+
+bin/storage.o: bin/storage.h
+
 bin/%: bin/%.o lib/libresample.so
-	$(LINKER) $(BIN_LDFLAGS) $< -o $@ $(BIN_LDLIBS)
+	$(LINKER) $(BIN_LDFLAGS) $^ -o $@ $(BIN_LDLIBS)
 
 lib/st/%.o: lib/%.c
 	mkdir -p lib/st
@@ -120,6 +124,6 @@ lib/%/timer.o: include/timer.h
 
 clean:
 	rm -rf lib/st lib/omp
-	rm -f lib/*.o lib/*.so bin/*.o bin/benchmark
+	rm -f lib/*.o lib/*.so bin/*.o bin/benchmark bin/*.o
 
 .PHONY: default clean

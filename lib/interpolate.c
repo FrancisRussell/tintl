@@ -37,6 +37,11 @@ void interpolate_print_timings(const interpolate_plan plan)
   plan->print_timings(plan->detail);
 }
 
+void interpolate_set_flags(const interpolate_plan plan, const int flags)
+{
+  plan->set_flags(plan->detail, flags);
+}
+
 void interpolate_destroy_plan(interpolate_plan plan)
 {
   interpolate_dec_ref_count(plan);

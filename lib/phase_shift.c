@@ -69,6 +69,7 @@ static interpolate_plan allocate_plan(void);
 
 /* Interface functions */
 static const char *get_name(const void *detail);
+static void phase_shift_set_flags(const void *detail, const int flags);
 static void phase_shift_interpolate_execute_interleaved(const void *detail, fftw_complex *in, fftw_complex *out);
 static void phase_shift_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout);
 static void phase_shift_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out);
@@ -112,6 +113,20 @@ static const char *get_name(const void *detail)
   return "phase_shift";
 }
 
+static void phase_shift_set_flags(const void *detail, const int flags)
+{
+  phase_shift_plan plan = (phase_shift_plan) detail;
+
+  const int conflicting_layouts = PREFER_PACKED_LAYOUT | PREFER_SPLIT_LAYOUT;
+  assert((flags & conflicting_layouts) != conflicting_layouts);
+
+  if (flags & PREFER_PACKED_LAYOUT)
+    plan->packing_strategy = PACKED;
+
+  if (flags & PREFER_SPLIT_LAYOUT)
+    plan->packing_strategy = SPLIT;
+}
+
 static interpolate_plan allocate_plan(void)
 {
   setup_threading();
@@ -125,6 +140,7 @@ static interpolate_plan allocate_plan(void)
   assert(holder->detail != NULL);
 
   holder->get_name = get_name;
+  holder->set_flags = phase_shift_set_flags;
   holder->execute_interleaved = phase_shift_interpolate_execute_interleaved;
   holder->execute_split = phase_shift_interpolate_execute_split;
   holder->execute_split_product = phase_shift_interpolate_execute_split_product;

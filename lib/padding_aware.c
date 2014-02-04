@@ -47,6 +47,7 @@ static interpolate_plan allocate_plan(void);
 
 /* Interface functions */
 static const char *get_name(const void *detail);
+static void pa_set_flags(const void *detail, int flags);
 static void pa_interpolate_execute_interleaved(const void *detail, fftw_complex *in, fftw_complex *out);
 static void pa_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout);
 static void pa_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out);
@@ -73,6 +74,7 @@ static interpolate_plan allocate_plan(void)
   assert(holder->detail != NULL);
 
   holder->get_name = get_name;
+  holder->set_flags = pa_set_flags;
   holder->execute_interleaved = pa_interpolate_execute_interleaved;
   holder->execute_split = pa_interpolate_execute_split;
   holder->execute_split_product = pa_interpolate_execute_split_product;
@@ -80,6 +82,20 @@ static interpolate_plan allocate_plan(void)
   holder->destroy_detail = pa_interpolate_destroy_detail;
 
   return holder;
+}
+
+static void pa_set_flags(const void *detail, const int flags)
+{
+  pa_plan plan = (pa_plan) detail;
+
+  const int conflicting_layouts = PREFER_PACKED_LAYOUT | PREFER_SPLIT_LAYOUT;
+  assert((flags & conflicting_layouts) != conflicting_layouts);
+
+  if (flags & PREFER_PACKED_LAYOUT)
+    plan->strategy = PACKED;
+
+  if (flags & PREFER_SPLIT_LAYOUT)
+    plan->strategy = SPLIT;
 }
 
 static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)

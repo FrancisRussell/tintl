@@ -21,12 +21,19 @@ typedef struct
   void *detail;
 
   const char *(*get_name)(const void *detail);
+  void (*set_flags)(const void *detail, int flags);
   void (*execute_interleaved)(const void *detail, rs_complex *in, rs_complex *out);
   void (*execute_split)(const void *detail, double *rin, double *iin, double *rout, double *iout);
   void (*execute_split_product)(const void *detail, double *rin, double *iin, double *out);
   void (*print_timings)(const void *detail);
   void (*destroy_detail)(void* detail);
 } interpolate_plan_s;
+
+enum
+{
+  PREFER_PACKED_LAYOUT = 1,
+  PREFER_SPLIT_LAYOUT = 2
+};
 
 /// Typedef for client use.
 typedef interpolate_plan_s *interpolate_plan;
@@ -48,6 +55,9 @@ void interpolate_print_timings(const interpolate_plan plan);
 
 /// Destroys a plan
 void interpolate_destroy_plan(interpolate_plan plan);
+
+/// Sets flags in a plan
+void interpolate_set_flags(const interpolate_plan plan, const int flags);
 
 /// Construct the best-performing interleaved interpolation plan from
 /// multiple implementations.
