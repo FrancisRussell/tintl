@@ -7,6 +7,19 @@
 /// \file
 /// Functions for executing interpolation plans.
 
+typedef enum
+{
+  STATISTIC_PLANNING,
+  STATISTIC_EXECUTION,
+  STATISTIC_UNKNOWN
+} stat_type_t;
+
+enum
+{
+  STATISTIC_EXECUTION_TIME = 1,
+  STATISTIC_LAST_COMMON_VALUE
+};
+
 /// Data structure common to all different interpolation implementations.
 ///
 /// Implementations populate this struct with a pointer to
@@ -22,6 +35,7 @@ typedef struct
 
   const char *(*get_name)(const void *detail);
   void (*set_flags)(const void *detail, int flags);
+  void (*get_statistic_float)(const void *detail, int statistic, int index, stat_type_t *type, double *value);
   void (*execute_interleaved)(const void *detail, rs_complex *in, rs_complex *out);
   void (*execute_split)(const void *detail, double *rin, double *iin, double *rout, double *iout);
   void (*execute_split_product)(const void *detail, double *rin, double *iin, double *out);
@@ -58,6 +72,9 @@ void interpolate_destroy_plan(interpolate_plan plan);
 
 /// Sets flags in a plan
 void interpolate_set_flags(const interpolate_plan plan, const int flags);
+
+/// Retrieves implementation-specific statistics from a plan
+void interpolate_get_statistic_float(const interpolate_plan plan, int statistic, int index, stat_type_t *type, double *value);
 
 /// Construct the best-performing interleaved interpolation plan from
 /// multiple implementations.

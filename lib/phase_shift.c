@@ -56,6 +56,12 @@ typedef struct
 
   fftw_complex *rotations[3];
 
+  double batched_fft_time[3];
+  double individual_fft_time[3];
+
+  time_point_t before;
+  time_point_t after;
+
   time_point_t before_expand2;
   time_point_t before_expand1;
   time_point_t before_expand0;
@@ -70,6 +76,7 @@ static interpolate_plan allocate_plan(void);
 /* Interface functions */
 static const char *get_name(const void *detail);
 static void phase_shift_set_flags(const void *detail, const int flags);
+static void phase_shift_get_statistic_float(const void *detail, int statistic, int index, stat_type_t *type, double *value);
 static void phase_shift_interpolate_execute_interleaved(const void *detail, fftw_complex *in, fftw_complex *out);
 static void phase_shift_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout);
 static void phase_shift_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out);
@@ -127,6 +134,36 @@ static void phase_shift_set_flags(const void *detail, const int flags)
     plan->packing_strategy = SPLIT;
 }
 
+static void phase_shift_get_statistic_float(const void *detail, const int statistic, const int index, stat_type_t *type, double *value)
+{
+  *type = STATISTIC_UNKNOWN;
+
+  phase_shift_plan plan = (phase_shift_plan) detail;
+  switch(statistic)
+  {
+    case STATISTIC_EXECUTION_TIME:
+      *type = STATISTIC_EXECUTION;
+      *value = time_point_delta(&plan->before, &plan->after);
+      return;
+    case PHASE_SHIFT_STATISTIC_BATCH_TRANSFORMS:
+      if (index >= 0 && index < 3)
+      {
+        *type = STATISTIC_PLANNING;
+        *value = plan->batched_fft_time[index];
+      }
+      return;
+    case PHASE_SHIFT_STATISTIC_INDIVIDUAL_TRANSFORMS:
+      if (index >= 0 && index < 3)
+      {
+        *type = STATISTIC_PLANNING;
+        *value = plan->individual_fft_time[index];
+      }
+      return;
+    default:
+      *type = STATISTIC_UNKNOWN;
+  }
+}
+
 static interpolate_plan allocate_plan(void)
 {
   setup_threading();
@@ -141,6 +178,7 @@ static interpolate_plan allocate_plan(void)
 
   holder->get_name = get_name;
   holder->set_flags = phase_shift_set_flags;
+  holder->get_statistic_float = phase_shift_get_statistic_float;
   holder->execute_interleaved = phase_shift_interpolate_execute_interleaved;
   holder->execute_split = phase_shift_interpolate_execute_split;
   holder->execute_split_product = phase_shift_interpolate_execute_split_product;
@@ -320,9 +358,9 @@ static void find_best_granularity_interleaved(phase_shift_plan plan, fftw_comple
     rotation_functions[dim](plan, in, out, scratch);
     block_after = getticks();
 
-    const double pencil_time = elapsed(pencil_after, pencil_before);
-    const double block_time = elapsed(block_after, block_before);
-    plan->blocking_strategy[dim] = (pencil_time < block_time) ? PENCIL_LEVEL : BLOCK_LEVEL;
+    plan->batched_fft_time[dim] = elapsed(block_after, block_before);
+    plan->individual_fft_time[dim] = elapsed(pencil_after, pencil_before);
+    plan->blocking_strategy[dim] = (plan->individual_fft_time[dim] < plan->batched_fft_time[dim]) ? PENCIL_LEVEL : BLOCK_LEVEL;
   }
 }
 
@@ -777,8 +815,9 @@ static void gather_blocks_product(phase_shift_plan plan, fftw_complex *blocks[8]
 static void phase_shift_interpolate_execute_interleaved_common(const phase_shift_plan plan, fftw_complex *blocks[8])
 {
   assert(plan->packing_strategy == PACKED);
-  const int max_dim = max_dimension(plan);
+  time_point_save(&plan->before);
 
+  const int max_dim = max_dimension(plan);
   fftw_complex *const scratch = rs_alloc_complex(max_dim);
 
   time_point_save(&plan->before_expand2);
@@ -793,12 +832,14 @@ static void phase_shift_interpolate_execute_interleaved_common(const phase_shift
     expand_dim0(plan, blocks[n], blocks[n + 4], scratch);
 
   rs_free(scratch);
+  time_point_save(&plan->after);
 }
 
 static void phase_shift_interpolate_execute_interleaved(const void *detail, fftw_complex *in, fftw_complex *out)
 {
   phase_shift_plan plan = (phase_shift_plan) detail;
   assert(plan->packing_strategy == PACKED);
+  time_point_save(&plan->before);
 
   const size_t block_size = num_elements(&plan->props);
 
@@ -816,6 +857,7 @@ static void phase_shift_interpolate_execute_interleaved(const void *detail, fftw
   time_point_save(&plan->end);
 
   rs_free(block_data);
+  time_point_save(&plan->after);
 }
 
 static void interpolate_real_common(const phase_shift_plan plan, double *blocks[8])
@@ -845,6 +887,7 @@ static void phase_shift_interpolate_execute_split(const void *detail, double *ri
 {
   phase_shift_plan plan = (phase_shift_plan) detail;
   assert(SPLIT == plan->props.type || SPLIT_PRODUCT == plan->props.type);
+  time_point_save(&plan->before);
   const size_t block_size = num_elements(&plan->props);
 
   if (plan->packing_strategy == SEPARATE)
@@ -894,12 +937,15 @@ static void phase_shift_interpolate_execute_split(const void *detail, double *ri
   {
     assert(0 && "Unknown packing strategy");
   }
+
+  time_point_save(&plan->after);
 }
 
 void phase_shift_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out)
 {
   phase_shift_plan plan = (phase_shift_plan) detail;
   assert(SPLIT_PRODUCT == plan->props.type);
+  time_point_save(&plan->before);
   const size_t block_size = num_elements(&plan->props);
 
   if (plan->packing_strategy == PACKED)
@@ -931,6 +977,8 @@ void phase_shift_interpolate_execute_split_product(const void *detail, double *r
   {
     assert(0 && "Unknown packing strategy");
   }
+
+  time_point_save(&plan->after);
 }
 
 void phase_shift_interpolate_print_timings(const void *detail)

@@ -16,4 +16,10 @@ interpolate_plan interpolate_plan_3d_phase_shift_split(int n0, int n1, int n2, i
 /// Construct split-product interpolation  plan.
 interpolate_plan interpolate_plan_3d_phase_shift_product(int n0, int n1, int n2, int flags);
 
+enum
+{
+  PHASE_SHIFT_STATISTIC_BATCH_TRANSFORMS = STATISTIC_LAST_COMMON_VALUE,
+  PHASE_SHIFT_STATISTIC_INDIVIDUAL_TRANSFORMS
+};
+
 #endif

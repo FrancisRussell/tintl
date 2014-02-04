@@ -37,6 +37,11 @@ void interpolate_print_timings(const interpolate_plan plan)
   plan->print_timings(plan->detail);
 }
 
+void interpolate_get_statistic_float(const interpolate_plan plan, int statistic, int index, stat_type_t *type, double *value)
+{
+  plan->get_statistic_float(plan->detail, statistic, index, type, value);
+}
+
 void interpolate_set_flags(const interpolate_plan plan, const int flags)
 {
   plan->set_flags(plan->detail, flags);

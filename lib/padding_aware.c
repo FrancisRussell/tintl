@@ -35,6 +35,9 @@ typedef struct
   fftw_plan n1_backward_real;
   fftw_plan n0_backward_real;
 
+  time_point_t before;
+  time_point_t after;
+
   time_point_t before_forward;
   time_point_t after_forward;
   time_point_t after_padding;
@@ -48,6 +51,7 @@ static interpolate_plan allocate_plan(void);
 /* Interface functions */
 static const char *get_name(const void *detail);
 static void pa_set_flags(const void *detail, int flags);
+static void pa_get_statistic_float(const void *detail, int statistic, int index, stat_type_t *type, double *value);
 static void pa_interpolate_execute_interleaved(const void *detail, fftw_complex *in, fftw_complex *out);
 static void pa_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout);
 static void pa_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out);
@@ -75,6 +79,7 @@ static interpolate_plan allocate_plan(void)
 
   holder->get_name = get_name;
   holder->set_flags = pa_set_flags;
+  holder->get_statistic_float = pa_get_statistic_float;
   holder->execute_interleaved = pa_interpolate_execute_interleaved;
   holder->execute_split = pa_interpolate_execute_split;
   holder->execute_split_product = pa_interpolate_execute_split_product;
@@ -96,6 +101,22 @@ static void pa_set_flags(const void *detail, const int flags)
 
   if (flags & PREFER_SPLIT_LAYOUT)
     plan->strategy = SPLIT;
+}
+
+static void pa_get_statistic_float(const void *detail, const int statistic, const int index, stat_type_t *type, double *result)
+{
+  pa_plan plan = (pa_plan) detail;
+
+  switch(statistic)
+  {
+    case STATISTIC_EXECUTION_TIME:
+      *type = STATISTIC_EXECUTION;
+      *result = time_point_delta(&plan->before, &plan->after);
+      return;
+    default:
+      *type = STATISTIC_UNKNOWN;
+      return;
+  }
 }
 
 static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)
@@ -358,6 +379,8 @@ static void pa_interpolate_execute_interleaved(const void *detail, fftw_complex 
   pa_plan plan = (pa_plan) detail;
   assert(plan->strategy == PACKED);
 
+  time_point_save(&plan->before);
+
   block_info_t coarse_info, fine_info;
   get_block_info_coarse(&plan->props, &coarse_info);
   get_block_info_fine(&plan->props, &fine_info);
@@ -374,6 +397,8 @@ static void pa_interpolate_execute_interleaved(const void *detail, fftw_complex 
   time_point_save(&plan->after_padding);
   backward_transform_c2c(plan, &fine_info, out);
   rs_free(input_copy);
+
+  time_point_save(&plan->after);
 }
 
 static void pa_interpolate_real(pa_plan plan, double *in, double *out)
@@ -405,6 +430,8 @@ static void pa_interpolate_execute_split(const void *detail, double *rin, double
 {
   pa_plan plan = (pa_plan) detail;
   assert(SPLIT == plan->props.type || SPLIT_PRODUCT == plan->props.type);
+
+  time_point_save(&plan->before);
 
   if (plan->strategy == PACKED)
   {
@@ -438,12 +465,16 @@ static void pa_interpolate_execute_split(const void *detail, double *rin, double
   {
     assert(0 && "Unkown strategy");
   }
+
+  time_point_save(&plan->after);
 }
 
 void pa_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out)
 {
   pa_plan plan = (pa_plan) detail;
   assert(SPLIT_PRODUCT == plan->props.type);
+  time_point_save(&plan->before);
+
   const size_t block_size = num_elements(&plan->props);
 
   if (plan->strategy == PACKED)
@@ -465,6 +496,8 @@ void pa_interpolate_execute_split_product(const void *detail, double *rin, doubl
     pointwise_multiply_real(8 * block_size, out, scratch_fine);
     rs_free(scratch_fine);
   }
+
+  time_point_save(&plan->after);
 }
 
 void pa_interpolate_print_timings(const void *detail)

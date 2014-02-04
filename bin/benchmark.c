@@ -19,6 +19,33 @@ typedef interpolate_plan (*plan_constructor_t)(int n0, int n1, int n2, int flags
 
 static const double pi = 3.14159265358979323846;
 
+typedef struct
+{
+  plan_constructor_t constructor;
+  int statistic;
+  int index;
+} column_info_t;
+
+static column_info_t *construct_identical_column_info(plan_constructor_t *constructors, int statistic, int index)
+{
+  int column_count = 0;
+  while(constructors[column_count] != NULL)
+    ++column_count;
+
+  column_info_t *const columns = malloc(sizeof(column_info_t) * (column_count + 1));
+  if (columns == NULL)
+    return NULL;
+
+  for(int i=0; i<column_count; ++i)
+  {
+    const column_info_t column_info = {.constructor = constructors[i], .statistic = statistic, .index = index};
+    columns[i] = column_info;
+  }
+
+  columns[column_count].constructor = NULL;
+  return columns;
+}
+
 static interpolate_plan interpolate_plan_3d_naive_split_split(int n0, int n1, int n2, int flags)
 {
   interpolate_plan plan = interpolate_plan_3d_naive_split(n0, n1, n2, flags);
@@ -163,7 +190,7 @@ static void perform_timing(plan_constructor_t constructor,
   interpolate_destroy_plan(plan);
 }
 
-static void benchmark(FILE *file, storage_layout_t layout, plan_constructor_t *constructors)
+static void benchmark(FILE *file, storage_layout_t layout, column_info_t *cols)
 {
   static const char* size_format_string = "%-8s";
   static const char* size_format_int = "%-8d";
@@ -171,29 +198,33 @@ static void benchmark(FILE *file, storage_layout_t layout, plan_constructor_t *c
   static const char* timing_format_string = "%-15s";
   static const char* timing_format_float = "%-15f";
 
-  int plan_type_count = 0;
+  int col_count = 0;
 
-  while(constructors[plan_type_count] != NULL)
-    ++plan_type_count;
+  while(cols[col_count].constructor != NULL)
+    ++col_count;
 
-  int *const use_plans = malloc(sizeof(int) * plan_type_count);
-  assert(use_plans != NULL);
+  int *const use_cols = malloc(sizeof(int) * col_count);
+  assert(use_cols != NULL);
 
   fprintf(file, "#data layout: %s\n", layout_name(layout));
   fprintf(file, size_format_string, "#size");
-  for(int i=0; i < plan_type_count; ++i)
+
+  stat_type_t stat_type = STATISTIC_UNKNOWN;
+  for(int i=0; i < col_count; ++i)
   {
-    interpolate_plan plan = constructors[i](1, 1, 1, 0);
+    interpolate_plan plan = cols[i].constructor(1, 1, 1, 0);
 
     if (plan != NULL)
     {
       fprintf(file, timing_format_string, interpolate_get_name(plan));
+      double dummy;
+      interpolate_get_statistic_float(plan, cols[i].statistic, cols[i].index, &stat_type, &dummy);
       interpolate_destroy_plan(plan);
-      use_plans[i] = 1;
+      use_cols[i] = 1;
     }
     else
     {
-      use_plans[i] = 0;
+      use_cols[i] = 0;
     }
   }
 
@@ -207,49 +238,63 @@ static void benchmark(FILE *file, storage_layout_t layout, plan_constructor_t *c
     x_width = y_width = z_width = size;
 
     const size_t block_size = x_width * y_width * z_width;
-    storage_t coarse, fine, reference;
-    storage_allocate(&coarse, layout, block_size);
-    storage_allocate(&fine, layout, 8 * block_size);
-    storage_allocate(&reference, layout, 8 * block_size);
-
-    generate_test_data(&coarse, z_width, y_width, x_width);
-    generate_test_data(&reference, 2 * z_width, 2 * y_width, 2 * x_width);
-
     fprintf(file, size_format_int, size);
 
-    for(int plan_type = 0; plan_type < plan_type_count; ++plan_type)
+    for(int col = 0; col < col_count; ++col)
     {
-      if (use_plans[plan_type] == 0)
+      if (use_cols[col] == 0)
         continue;
 
-      double time = 0.0;
-      time_point_t begin_interpolate, end_interpolate;
-      interpolate_plan plan = constructors[plan_type](x_width, y_width, z_width, 0);
-      storage_zero(&fine);
+      double measurement = 0.0;
 
-      for(int run = 0; run < runs; ++run)
+      if (stat_type == STATISTIC_PLANNING)
       {
-        time_point_save(&begin_interpolate);
-        execute_interpolate(plan, &coarse, &fine);
-        time_point_save(&end_interpolate);
-        time += time_point_delta(&begin_interpolate, &end_interpolate);
+        for(int run = 0; run < runs; ++run)
+        {
+          interpolate_plan plan = cols[col].constructor(x_width, y_width, z_width, 0);
+          double run_measurement;
+          interpolate_get_statistic_float(plan, cols[col].statistic, cols[col].index, &stat_type, &run_measurement);
+          measurement += run_measurement;
+          interpolate_destroy_plan(plan);
+        }
+      }
+      else
+      {
+        storage_t coarse, fine, reference;
+        storage_allocate(&coarse, layout, block_size);
+        storage_allocate(&fine, layout, 8 * block_size);
+        storage_allocate(&reference, layout, 8 * block_size);
+
+        generate_test_data(&coarse, z_width, y_width, x_width);
+        generate_test_data(&reference, 2 * z_width, 2 * y_width, 2 * x_width);
+
+        interpolate_plan plan = cols[col].constructor(x_width, y_width, z_width, 0);
+        storage_zero(&fine);
+
+        for(int run = 0; run < runs; ++run)
+        {
+          execute_interpolate(plan, &coarse, &fine);
+          double run_measurement;
+          interpolate_get_statistic_float(plan, cols[col].statistic, cols[col].index, &stat_type, &run_measurement);
+          measurement += run_measurement;
+        }
+
+        assert(compute_delta_norm(8 * block_size, &fine, &reference) < 1e-5);
+        interpolate_destroy_plan(plan);
+
+        storage_free(&coarse);
+        storage_free(&fine);
+        storage_free(&reference);
       }
 
-      interpolate_destroy_plan(plan);
-      time /= runs;
-      fprintf(file, timing_format_float, time);
-
-      assert(compute_delta_norm(8 * block_size, &fine, &reference) < 1e-5);
+      measurement /= runs;
+      fprintf(file, timing_format_float, measurement);
     }
-
-    storage_free(&coarse);
-    storage_free(&fine);
-    storage_free(&reference);
 
     fprintf(file, "\n");
   }
 
-  free(use_plans);
+  free(use_cols);
 }
 
 int main(int argc, char **argv)
@@ -265,7 +310,10 @@ int main(int argc, char **argv)
       NULL
     };
 
-    benchmark(stdout, INTERLEAVED, interleaved_constructors);
+    column_info_t *const cols = construct_identical_column_info(interleaved_constructors, STATISTIC_EXECUTION_TIME, 0);
+    assert(cols != NULL);
+    benchmark(stdout, INTERLEAVED, cols);
+    free(cols);
   }
   else if (argc > 1 && strcmp("--table-split", argv[1]) == 0)
   {
@@ -278,9 +326,12 @@ int main(int argc, char **argv)
       NULL
     };
 
-    benchmark(stdout, SPLIT, split_constructors);
+    column_info_t *const cols = construct_identical_column_info(split_constructors, STATISTIC_EXECUTION_TIME, 0);
+    assert(cols != NULL);
+    benchmark(stdout, SPLIT, cols);
+    free(cols);
   }
-  else if (argc > 1 && strcmp("--table-compare-layouts", argv[1]) == 0)
+  else if (argc > 1 && strcmp("--table-layouts", argv[1]) == 0)
   {
     plan_constructor_t split_constructors[] = {
       interpolate_plan_3d_naive_split_split,
@@ -293,7 +344,25 @@ int main(int argc, char **argv)
     };
 
     fprintf(stdout, "#format order: split, packed\n");
-    benchmark(stdout, SPLIT, split_constructors);
+    column_info_t *const cols = construct_identical_column_info(split_constructors, STATISTIC_EXECUTION_TIME, 0);
+    assert(cols != NULL);
+    benchmark(stdout, SPLIT, cols);
+    free(cols);
+  }
+  else if (argc > 1 && strcmp("--table-phase-shift-batching", argv[1]) == 0)
+  {
+    column_info_t cols[] = {
+      { .constructor = interpolate_plan_3d_phase_shift_interleaved, .statistic = PHASE_SHIFT_STATISTIC_BATCH_TRANSFORMS, .index = 0 },
+      { .constructor = interpolate_plan_3d_phase_shift_interleaved, .statistic = PHASE_SHIFT_STATISTIC_INDIVIDUAL_TRANSFORMS, .index = 0 },
+      { .constructor = interpolate_plan_3d_phase_shift_interleaved, .statistic = PHASE_SHIFT_STATISTIC_BATCH_TRANSFORMS, .index = 1 },
+      { .constructor = interpolate_plan_3d_phase_shift_interleaved, .statistic = PHASE_SHIFT_STATISTIC_INDIVIDUAL_TRANSFORMS, .index = 1 },
+      { .constructor = interpolate_plan_3d_phase_shift_interleaved, .statistic = PHASE_SHIFT_STATISTIC_BATCH_TRANSFORMS, .index = 2 },
+      { .constructor = interpolate_plan_3d_phase_shift_interleaved, .statistic = PHASE_SHIFT_STATISTIC_INDIVIDUAL_TRANSFORMS, .index = 2 },
+      { .constructor = NULL }
+    };
+
+    fprintf(stdout, "#batch(dim=0), individual(dim=0), batch(dim=1), individual(dim=1), batch(dim=2), individual(dim=2)\n");
+    benchmark(stdout, INTERLEAVED, cols);
   }
   else
   {

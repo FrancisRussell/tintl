@@ -31,6 +31,9 @@ typedef struct
   fftw_plan real_forward;
   fftw_plan real_backward;
 
+  time_point_t before;
+  time_point_t after;
+
   time_point_t before_forward;
   time_point_t after_forward;
   time_point_t after_padding;
@@ -44,6 +47,7 @@ static interpolate_plan allocate_plan(void);
 /* Interface functions */
 static const char *get_name(const void *detail);
 static void naive_set_flags(const void *detail, int flags);
+static void naive_get_statistic_float(const void *detail, int statistic, int index, stat_type_t *type, double *result);
 static void naive_interpolate_execute_interleaved(const void *detail, fftw_complex *in, fftw_complex *out);
 static void naive_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout);
 static void naive_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out);
@@ -71,6 +75,7 @@ static interpolate_plan allocate_plan(void)
 
   holder->get_name = get_name;
   holder->set_flags = naive_set_flags;
+  holder->get_statistic_float = naive_get_statistic_float;
   holder->execute_interleaved = naive_interpolate_execute_interleaved;
   holder->execute_split = naive_interpolate_execute_split;
   holder->execute_split_product = naive_interpolate_execute_split_product;
@@ -121,6 +126,22 @@ static void naive_set_flags(const void *detail, const int flags)
 
   if (flags & PREFER_SPLIT_LAYOUT)
     plan->strategy = SPLIT;
+}
+
+static void naive_get_statistic_float(const void *detail, int statistic, int index, stat_type_t *type, double *result)
+{
+  naive_plan plan = (naive_plan) detail;
+
+  switch(statistic)
+  {
+    case STATISTIC_EXECUTION_TIME:
+      *type = STATISTIC_EXECUTION;
+      *result = time_point_delta(&plan->before, &plan->after);
+      return;
+    default:
+      *type = STATISTIC_UNKNOWN;
+      return;
+  }
 }
 
 interpolate_plan interpolate_plan_3d_naive_interleaved(int n0, int n1, int n2, int flags)
@@ -214,6 +235,8 @@ static void naive_interpolate_execute_interleaved(const void *detail, fftw_compl
   naive_plan plan = (naive_plan) detail;
   assert(plan->strategy == PACKED);
 
+  time_point_save(&plan->before);
+
   block_info_t coarse_info, fine_info;
   get_block_info_coarse(&plan->props, &coarse_info);
   get_block_info_fine(&plan->props, &fine_info);
@@ -230,6 +253,8 @@ static void naive_interpolate_execute_interleaved(const void *detail, fftw_compl
   time_point_save(&plan->after_padding);
   fftw_execute_dft(plan->interleaved_backward, out, out);
   time_point_save(&plan->after_backward);
+
+  time_point_save(&plan->after);
 
   rs_free(input_copy);
 }
@@ -265,6 +290,8 @@ static void naive_interpolate_execute_split(const void *detail, double *rin, dou
   naive_plan plan = (naive_plan) detail;
   assert(SPLIT == plan->props.type || SPLIT_PRODUCT == plan->props.type);
 
+  time_point_save(&plan->before);
+
   if (plan->strategy == PACKED)
   {
     block_info_t coarse_info, fine_info;
@@ -298,12 +325,17 @@ static void naive_interpolate_execute_split(const void *detail, double *rin, dou
   {
     assert(0 && "Unknown strategy.");
   }
+
+  time_point_save(&plan->after);
 }
 
 void naive_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out)
 {
   naive_plan plan = (naive_plan) detail;
   assert(SPLIT_PRODUCT == plan->props.type);
+
+  time_point_save(&plan->before);
+
   const size_t block_size = num_elements(&plan->props);
 
   if (plan->strategy == PACKED)
@@ -329,6 +361,8 @@ void naive_interpolate_execute_split_product(const void *detail, double *rin, do
   {
     assert(0 && "Unknown strategy");
   }
+
+  time_point_save(&plan->after);
 }
 
 void naive_interpolate_print_timings(const void *detail)
