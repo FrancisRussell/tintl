@@ -24,9 +24,12 @@ typedef struct
   plan_constructor_t constructor;
   int statistic;
   int index;
+  int field_width;
+  int field_precision;
 } column_info_t;
 
-static column_info_t *construct_identical_column_info(plan_constructor_t *constructors, int statistic, int index)
+static column_info_t *construct_identical_column_info(plan_constructor_t *constructors, int statistic, int index,
+  int field_width, int field_precision)
 {
   int column_count = 0;
   while(constructors[column_count] != NULL)
@@ -38,7 +41,14 @@ static column_info_t *construct_identical_column_info(plan_constructor_t *constr
 
   for(int i=0; i<column_count; ++i)
   {
-    const column_info_t column_info = {.constructor = constructors[i], .statistic = statistic, .index = index};
+    const column_info_t column_info =
+    {
+      .constructor = constructors[i],
+      .statistic = statistic,
+      .index = index,
+      .field_width = field_width,
+      .field_precision = field_precision
+    };
     columns[i] = column_info;
   }
 
@@ -195,9 +205,6 @@ static void benchmark(FILE *file, storage_layout_t layout, column_info_t *cols)
   static const char* size_format_string = "%-8s";
   static const char* size_format_int = "%-8d";
 
-  static const char* timing_format_string = "%-15s";
-  static const char* timing_format_float = "%-15f";
-
   int col_count = 0;
 
   while(cols[col_count].constructor != NULL)
@@ -216,7 +223,7 @@ static void benchmark(FILE *file, storage_layout_t layout, column_info_t *cols)
 
     if (plan != NULL)
     {
-      fprintf(file, timing_format_string, interpolate_get_name(plan));
+      fprintf(file, "%-*s", cols[i].field_width, interpolate_get_name(plan));
       double dummy;
       interpolate_get_statistic_float(plan, cols[i].statistic, cols[i].index, &stat_type, &dummy);
       interpolate_destroy_plan(plan);
@@ -288,7 +295,7 @@ static void benchmark(FILE *file, storage_layout_t layout, column_info_t *cols)
       }
 
       measurement /= runs;
-      fprintf(file, timing_format_float, measurement);
+      fprintf(file, "%-*.*f", cols[col].field_width, cols[col].field_precision, measurement);
     }
 
     fprintf(file, "\n");
@@ -299,6 +306,12 @@ static void benchmark(FILE *file, storage_layout_t layout, column_info_t *cols)
 
 int main(int argc, char **argv)
 {
+  const int seconds_width=15;
+  const int seconds_precision=6;
+
+  const int ticks_width=15;
+  const int ticks_precision=0;
+
   if (argc > 1 && strcmp("--table-interleaved", argv[1]) == 0)
   {
     plan_constructor_t interleaved_constructors[] = {
@@ -310,7 +323,8 @@ int main(int argc, char **argv)
       NULL
     };
 
-    column_info_t *const cols = construct_identical_column_info(interleaved_constructors, STATISTIC_EXECUTION_TIME, 0);
+    column_info_t *const cols = construct_identical_column_info(interleaved_constructors, STATISTIC_EXECUTION_TIME, 0,
+      seconds_width, seconds_precision);
     assert(cols != NULL);
     benchmark(stdout, INTERLEAVED, cols);
     free(cols);
@@ -326,7 +340,8 @@ int main(int argc, char **argv)
       NULL
     };
 
-    column_info_t *const cols = construct_identical_column_info(split_constructors, STATISTIC_EXECUTION_TIME, 0);
+    column_info_t *const cols = construct_identical_column_info(split_constructors, STATISTIC_EXECUTION_TIME, 0,
+      seconds_width, seconds_precision);
     assert(cols != NULL);
     benchmark(stdout, SPLIT, cols);
     free(cols);
@@ -344,7 +359,8 @@ int main(int argc, char **argv)
     };
 
     fprintf(stdout, "#format order: split, packed\n");
-    column_info_t *const cols = construct_identical_column_info(split_constructors, STATISTIC_EXECUTION_TIME, 0);
+    column_info_t *const cols = construct_identical_column_info(split_constructors, STATISTIC_EXECUTION_TIME, 0,
+      seconds_width, seconds_precision);
     assert(cols != NULL);
     benchmark(stdout, SPLIT, cols);
     free(cols);
@@ -352,12 +368,18 @@ int main(int argc, char **argv)
   else if (argc > 1 && strcmp("--table-phase-shift-batching", argv[1]) == 0)
   {
     column_info_t cols[] = {
-      { .constructor = interpolate_plan_3d_phase_shift_interleaved, .statistic = PHASE_SHIFT_STATISTIC_BATCH_TRANSFORMS, .index = 0 },
-      { .constructor = interpolate_plan_3d_phase_shift_interleaved, .statistic = PHASE_SHIFT_STATISTIC_INDIVIDUAL_TRANSFORMS, .index = 0 },
-      { .constructor = interpolate_plan_3d_phase_shift_interleaved, .statistic = PHASE_SHIFT_STATISTIC_BATCH_TRANSFORMS, .index = 1 },
-      { .constructor = interpolate_plan_3d_phase_shift_interleaved, .statistic = PHASE_SHIFT_STATISTIC_INDIVIDUAL_TRANSFORMS, .index = 1 },
-      { .constructor = interpolate_plan_3d_phase_shift_interleaved, .statistic = PHASE_SHIFT_STATISTIC_BATCH_TRANSFORMS, .index = 2 },
-      { .constructor = interpolate_plan_3d_phase_shift_interleaved, .statistic = PHASE_SHIFT_STATISTIC_INDIVIDUAL_TRANSFORMS, .index = 2 },
+      { .constructor = interpolate_plan_3d_phase_shift_interleaved, .field_width = ticks_width,
+        .field_precision = ticks_precision, .statistic = PHASE_SHIFT_STATISTIC_BATCH_TRANSFORMS, .index = 0 },
+      { .constructor = interpolate_plan_3d_phase_shift_interleaved, .field_width = ticks_width,
+        .field_precision = ticks_precision, .statistic = PHASE_SHIFT_STATISTIC_INDIVIDUAL_TRANSFORMS, .index = 0 },
+      { .constructor = interpolate_plan_3d_phase_shift_interleaved, .field_width = ticks_width,
+        .field_precision = ticks_precision, .statistic = PHASE_SHIFT_STATISTIC_BATCH_TRANSFORMS, .index = 1 },
+      { .constructor = interpolate_plan_3d_phase_shift_interleaved, .field_width = ticks_width,
+        .field_precision = ticks_precision, .statistic = PHASE_SHIFT_STATISTIC_INDIVIDUAL_TRANSFORMS, .index = 1 },
+      { .constructor = interpolate_plan_3d_phase_shift_interleaved, .field_width = ticks_width,
+        .field_precision = ticks_precision, .statistic = PHASE_SHIFT_STATISTIC_BATCH_TRANSFORMS, .index = 2 },
+      { .constructor = interpolate_plan_3d_phase_shift_interleaved, .field_width = ticks_width,
+        .field_precision = ticks_precision, .statistic = PHASE_SHIFT_STATISTIC_INDIVIDUAL_TRANSFORMS, .index = 2 },
       { .constructor = NULL }
     };
 
