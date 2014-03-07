@@ -4,7 +4,7 @@
 /// \file
 /// Functions for performing wall-clock timings in seconds.
 
-#include <sys/time.h>
+#include <time.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -14,7 +14,7 @@ extern "C"
 /// Opaque time representation.
 typedef struct
 {
-  struct timeval val;
+  struct timespec val;
 } time_point_t;
 
 
