@@ -52,6 +52,8 @@ static void naive_interpolate_execute_split(const void *detail, double *rin, dou
 static void naive_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out);
 static void naive_interpolate_print_timings(const void *detail);
 static void naive_interpolate_destroy_detail(void *detail);
+static void naive_set_flags(const void *detail, const int flags);
+static void naive_get_statistic_float(const void *detail, int statistic, int index, stat_type_t *type, double *result);
 
 static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, int n2, int flags);
 
@@ -73,6 +75,8 @@ static interpolate_plan allocate_plan(void)
   assert(holder->detail != NULL);
 
   holder->get_name = get_name;
+  holder->set_flags = naive_set_flags;
+  holder->get_statistic_float = naive_get_statistic_float;
   holder->execute_interleaved = naive_interpolate_execute_interleaved;
   holder->execute_split = naive_interpolate_execute_split;
   holder->execute_split_product = naive_interpolate_execute_split_product;
@@ -80,6 +84,36 @@ static interpolate_plan allocate_plan(void)
   holder->destroy_detail = naive_interpolate_destroy_detail;
 
   return holder;
+}
+
+static void naive_set_flags(const void *detail, const int flags)
+{
+  naive_plan plan = (naive_plan) detail;
+
+  const int conflicting_layouts = PREFER_PACKED_LAYOUT | PREFER_SPLIT_LAYOUT;
+  assert((flags & conflicting_layouts) != conflicting_layouts);
+
+  if (flags & PREFER_PACKED_LAYOUT)
+    plan->strategy = PACKED;
+
+  if (flags & PREFER_SPLIT_LAYOUT)
+    plan->strategy = SEPARATE;
+}
+
+static void naive_get_statistic_float(const void *detail, int statistic, int index, stat_type_t *type, double *result)
+{
+  naive_plan plan = (naive_plan) detail;
+
+  switch(statistic)
+  {
+    case STATISTIC_EXECUTION_TIME:
+      *type = STATISTIC_EXECUTION;
+      *result = time_point_delta(&plan->before, &plan->after);
+      return;
+    default:
+      *type = STATISTIC_UNKNOWN;
+      return;
+  }
 }
 
 static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)
@@ -104,7 +138,7 @@ interpolate_plan interpolate_plan_3d_naive_cuda_interleaved(int n0, int n1, int 
   interpolate_plan wrapper = allocate_plan();
   naive_plan plan = (naive_plan) wrapper->detail;
 
-  plan_common(plan, INTERLEAVED, n0, n1, n2, flags);
+  plan_common(plan, INTERPOLATE_INTERLEAVED, n0, n1, n2, flags);
   plan->strategy = PACKED;
 
   return wrapper;
@@ -115,7 +149,7 @@ interpolate_plan interpolate_plan_3d_naive_cuda_split(int n0, int n1, int n2, in
   interpolate_plan wrapper = allocate_plan();
   naive_plan plan = (naive_plan) wrapper->detail;
 
-  plan_common(plan, SPLIT, n0, n1, n2, flags);
+  plan_common(plan, INTERPOLATE_SPLIT, n0, n1, n2, flags);
 
   block_info_t coarse_info, fine_info, transformed_coarse_info, transformed_fine_info;
   get_block_info_coarse(&plan->props, &coarse_info);
@@ -148,7 +182,7 @@ interpolate_plan interpolate_plan_3d_naive_cuda_product(int n0, int n1, int n2, 
 {
   interpolate_plan wrapper = interpolate_plan_3d_naive_cuda_split(n0, n1, n2, flags);
   naive_plan plan = (naive_plan) wrapper->detail;
-  plan->props.type = SPLIT_PRODUCT;
+  plan->props.type = INTERPOLATE_SPLIT_PRODUCT;
 
   plan->strategy = SEPARATE;
   const double separate_time = time_interpolate_split_product(wrapper, plan->props.dims);
@@ -222,8 +256,6 @@ static void naive_interpolate_real(naive_plan plan, double *in, const thrust::de
   const size_t transformed_size_coarse = num_elements_block(&transformed_coarse_info);
   const size_t transformed_size_fine = num_elements_block(&transformed_fine_info);
 
-  time_point_save(&plan->before);
-
   thrust::device_vector<double> dev_in(block_size);
   thrust::device_vector<cuDoubleComplex> scratch_coarse(transformed_size_coarse);
   thrust::device_vector<cuDoubleComplex> scratch_fine(transformed_size_fine);
@@ -239,14 +271,14 @@ static void naive_interpolate_real(naive_plan plan, double *in, const thrust::de
     &transformed_coarse_info, thrust::raw_pointer_cast(&scratch_coarse[0]), &transformed_fine_info, thrust::raw_pointer_cast(&scratch_fine[0]), 1);
 
   CUFFT_CHECK(cufftExecZ2D(plan->real_backward, thrust::raw_pointer_cast(&scratch_fine[0]), thrust::raw_pointer_cast(dev_out)));
-
-  time_point_save(&plan->after);
 }
 
 static void naive_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout)
 {
   naive_plan plan = (naive_plan) detail;
-  assert(SPLIT == plan->props.type || SPLIT_PRODUCT == plan->props.type);
+  assert(INTERPOLATE_SPLIT == plan->props.type || INTERPOLATE_SPLIT_PRODUCT == plan->props.type);
+
+  time_point_save(&plan->before);
 
   if (plan->strategy == PACKED)
   {
@@ -291,13 +323,17 @@ static void naive_interpolate_execute_split(const void *detail, double *rin, dou
   {
     assert(0 && "Unknown strategy.");
   }
+
+  time_point_save(&plan->after);
 }
 
 void naive_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out)
 {
   naive_plan plan = (naive_plan) detail;
-  assert(SPLIT_PRODUCT == plan->props.type);
+  assert(INTERPOLATE_SPLIT_PRODUCT == plan->props.type);
   const size_t block_size = num_elements(&plan->props);
+
+  time_point_save(&plan->before);
 
   if (plan->strategy == PACKED)
   {
@@ -341,6 +377,8 @@ void naive_interpolate_execute_split_product(const void *detail, double *rin, do
   {
     assert(0 && "Unknown strategy");
   }
+
+  time_point_save(&plan->after);
 }
 
 void naive_interpolate_print_timings(const void *detail)
