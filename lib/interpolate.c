@@ -188,7 +188,7 @@ interpolate_plan interpolate_plan_3d_interleaved_best(int n0, int n1, int n2, in
     NULL
   };
 
-  return find_best_plan(time_interpolate_interleaved, constructors, n0, n1, n2, INTERLEAVED, flags);
+  return find_best_plan(time_interpolate_interleaved, constructors, n0, n1, n2, INTERPOLATE_INTERLEAVED, flags);
 }
 
 interpolate_plan interpolate_plan_3d_split_best(int n0, int n1, int n2, int flags)
@@ -199,7 +199,7 @@ interpolate_plan interpolate_plan_3d_split_best(int n0, int n1, int n2, int flag
     interpolate_plan_3d_phase_shift_split,
     NULL
   };
-  return find_best_plan(time_interpolate_split, constructors, n0, n1, n2, SPLIT, flags);
+  return find_best_plan(time_interpolate_split, constructors, n0, n1, n2, INTERPOLATE_SPLIT, flags);
 }
 
 interpolate_plan interpolate_plan_3d_split_product_best(int n0, int n1, int n2, int flags)
@@ -210,5 +210,5 @@ interpolate_plan interpolate_plan_3d_split_product_best(int n0, int n1, int n2, 
     interpolate_plan_3d_phase_shift_product,
     NULL
   };
-  return find_best_plan(time_interpolate_split_product, constructors, n0, n1, n2, SPLIT_PRODUCT, flags);
+  return find_best_plan(time_interpolate_split_product, constructors, n0, n1, n2, INTERPOLATE_SPLIT_PRODUCT, flags);
 }

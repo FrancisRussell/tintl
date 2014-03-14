@@ -28,9 +28,9 @@ enum
 /// Enumeration of the different types of supported interpolation.
 typedef enum
 {
-  INTERLEAVED,
-  SPLIT,
-  SPLIT_PRODUCT
+  INTERPOLATE_INTERLEAVED,
+  INTERPOLATE_SPLIT,
+  INTERPOLATE_SPLIT_PRODUCT
 } interpolation_t;
 
 /// Describes an interpolation.

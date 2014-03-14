@@ -131,7 +131,7 @@ static void phase_shift_set_flags(const void *detail, const int flags)
     plan->packing_strategy = PACKED;
 
   if (flags & PREFER_SPLIT_LAYOUT)
-    plan->packing_strategy = SPLIT;
+    plan->packing_strategy = SEPARATE;
 }
 
 static void phase_shift_get_statistic_float(const void *detail, const int statistic, const int index, stat_type_t *type, double *value)
@@ -489,7 +489,7 @@ interpolate_plan interpolate_plan_3d_phase_shift_interleaved(int n0, int n1, int
   phase_shift_plan plan = (phase_shift_plan) wrapper->detail;
 
   flags |= FFTW_MEASURE;
-  plan_common(plan, INTERLEAVED, n0, n1, n2, flags);
+  plan_common(plan, INTERPOLATE_INTERLEAVED, n0, n1, n2, flags);
   plan->packing_strategy = PACKED;
 
   return wrapper;
@@ -501,7 +501,7 @@ interpolate_plan interpolate_plan_3d_phase_shift_split(int n0, int n1, int n2, i
   phase_shift_plan plan = (phase_shift_plan) wrapper->detail;
 
   flags |= FFTW_MEASURE;
-  plan_common(plan, SPLIT, n0, n1, n2, flags);
+  plan_common(plan, INTERPOLATE_SPLIT, n0, n1, n2, flags);
 
   block_info_t coarse_info;
   get_block_info_coarse(&plan->props, &coarse_info);
@@ -559,7 +559,7 @@ interpolate_plan interpolate_plan_3d_phase_shift_split(int n0, int n1, int n2, i
 interpolate_plan interpolate_plan_3d_phase_shift_product(int n0, int n1, int n2, int flags)
 {
   interpolate_plan wrapper = interpolate_plan_3d_phase_shift_split(n0, n1, n2, flags);
-  ((phase_shift_plan) wrapper->detail)->props.type = SPLIT_PRODUCT;
+  ((phase_shift_plan) wrapper->detail)->props.type = INTERPOLATE_SPLIT_PRODUCT;
   return wrapper;
 }
 
@@ -886,7 +886,7 @@ static void interpolate_real_common(const phase_shift_plan plan, double *blocks[
 static void phase_shift_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout)
 {
   phase_shift_plan plan = (phase_shift_plan) detail;
-  assert(SPLIT == plan->props.type || SPLIT_PRODUCT == plan->props.type);
+  assert(INTERPOLATE_SPLIT == plan->props.type || INTERPOLATE_SPLIT_PRODUCT == plan->props.type);
   time_point_save(&plan->before);
   const size_t block_size = num_elements(&plan->props);
 
@@ -944,7 +944,7 @@ static void phase_shift_interpolate_execute_split(const void *detail, double *ri
 void phase_shift_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out)
 {
   phase_shift_plan plan = (phase_shift_plan) detail;
-  assert(SPLIT_PRODUCT == plan->props.type);
+  assert(INTERPOLATE_SPLIT_PRODUCT == plan->props.type);
   time_point_save(&plan->before);
   const size_t block_size = num_elements(&plan->props);
 

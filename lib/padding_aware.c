@@ -100,7 +100,7 @@ static void pa_set_flags(const void *detail, const int flags)
     plan->strategy = PACKED;
 
   if (flags & PREFER_SPLIT_LAYOUT)
-    plan->strategy = SPLIT;
+    plan->strategy = SEPARATE;
 }
 
 static void pa_get_statistic_float(const void *detail, const int statistic, const int index, stat_type_t *type, double *result)
@@ -183,7 +183,7 @@ interpolate_plan interpolate_plan_3d_padding_aware_interleaved(int n0, int n1, i
   pa_plan plan = (pa_plan) wrapper->detail;
 
   flags |= FFTW_MEASURE;
-  plan_common(plan, INTERLEAVED, n0, n1, n2, flags);
+  plan_common(plan, INTERPOLATE_INTERLEAVED, n0, n1, n2, flags);
   plan->strategy = PACKED;
 
   return wrapper;
@@ -195,7 +195,7 @@ interpolate_plan interpolate_plan_3d_padding_aware_split(int n0, int n1, int n2,
   pa_plan plan = (pa_plan) wrapper->detail;
 
   flags |= FFTW_MEASURE;
-  plan_common(plan, SPLIT, n0, n1, n2, flags);
+  plan_common(plan, INTERPOLATE_SPLIT, n0, n1, n2, flags);
 
   block_info_t coarse_info, fine_info, transformed_coarse_info, transformed_fine_info;
   get_block_info_coarse(&plan->props, &coarse_info);
@@ -255,7 +255,7 @@ interpolate_plan interpolate_plan_3d_padding_aware_product(int n0, int n1, int n
 {
   interpolate_plan wrapper = interpolate_plan_3d_padding_aware_split(n0, n1, n2, flags);
   pa_plan plan = (pa_plan) wrapper->detail;
-  plan->props.type = SPLIT_PRODUCT;
+  plan->props.type = INTERPOLATE_SPLIT_PRODUCT;
 
   plan->strategy = SEPARATE;
   const double separate_time = time_interpolate_split_product(wrapper, plan->props.dims);
@@ -429,7 +429,7 @@ static void pa_interpolate_real(pa_plan plan, double *in, double *out)
 static void pa_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout)
 {
   pa_plan plan = (pa_plan) detail;
-  assert(SPLIT == plan->props.type || SPLIT_PRODUCT == plan->props.type);
+  assert(INTERPOLATE_SPLIT == plan->props.type || INTERPOLATE_SPLIT_PRODUCT == plan->props.type);
 
   time_point_save(&plan->before);
 
@@ -472,7 +472,7 @@ static void pa_interpolate_execute_split(const void *detail, double *rin, double
 void pa_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out)
 {
   pa_plan plan = (pa_plan) detail;
-  assert(SPLIT_PRODUCT == plan->props.type);
+  assert(INTERPOLATE_SPLIT_PRODUCT == plan->props.type);
   time_point_save(&plan->before);
 
   const size_t block_size = num_elements(&plan->props);
