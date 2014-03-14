@@ -59,6 +59,8 @@ static void pa_interpolate_execute_split(const void *detail, double *rin, double
 static void pa_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out);
 static void pa_interpolate_print_timings(const void *detail);
 static void pa_interpolate_destroy_detail(void *detail);
+static void pa_set_flags(const void *detail, const int flags);
+static void pa_get_statistic_float(const void *detail, const int statistic, const int index, stat_type_t *type, double *result);
 
 static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int n2, int flags);
 
@@ -80,6 +82,8 @@ static interpolate_plan allocate_plan(void)
   assert(holder->detail != NULL);
 
   holder->get_name = get_name;
+  holder->set_flags = pa_set_flags;
+  holder->get_statistic_float = pa_get_statistic_float;
   holder->execute_interleaved = pa_interpolate_execute_interleaved;
   holder->execute_split = pa_interpolate_execute_split;
   holder->execute_split_product = pa_interpolate_execute_split_product;
@@ -87,6 +91,36 @@ static interpolate_plan allocate_plan(void)
   holder->destroy_detail = pa_interpolate_destroy_detail;
 
   return holder;
+}
+
+static void pa_set_flags(const void *detail, const int flags)
+{
+  pa_plan plan = (pa_plan) detail;
+
+  const int conflicting_layouts = PREFER_PACKED_LAYOUT | PREFER_SPLIT_LAYOUT;
+  assert((flags & conflicting_layouts) != conflicting_layouts);
+
+  if (flags & PREFER_PACKED_LAYOUT)
+    plan->strategy = PACKED;
+
+  if (flags & PREFER_SPLIT_LAYOUT)
+    plan->strategy = SEPARATE;
+}
+
+static void pa_get_statistic_float(const void *detail, const int statistic, const int index, stat_type_t *type, double *result)
+{
+  pa_plan plan = (pa_plan) detail;
+
+  switch(statistic)
+  {
+    case STATISTIC_EXECUTION_TIME:
+      *type = STATISTIC_EXECUTION;
+      *result = time_point_delta(&plan->before, &plan->after);
+      return;
+    default:
+      *type = STATISTIC_UNKNOWN;
+      return;
+  }
 }
 
 static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)
@@ -158,7 +192,7 @@ interpolate_plan interpolate_plan_3d_padding_aware_cuda_interleaved(int n0, int 
   interpolate_plan wrapper = allocate_plan();
   pa_plan plan = (pa_plan) wrapper->detail;
 
-  plan_common(plan, INTERLEAVED, n0, n1, n2, flags);
+  plan_common(plan, INTERPOLATE_INTERLEAVED, n0, n1, n2, flags);
   plan->strategy = PACKED;
 
   return wrapper;
@@ -169,7 +203,7 @@ interpolate_plan interpolate_plan_3d_padding_aware_cuda_split(int n0, int n1, in
   interpolate_plan wrapper = allocate_plan();
   pa_plan plan = (pa_plan) wrapper->detail;
 
-  plan_common(plan, SPLIT, n0, n1, n2, flags);
+  plan_common(plan, INTERPOLATE_SPLIT, n0, n1, n2, flags);
 
   block_info_t coarse_info, fine_info, transformed_coarse_info, transformed_fine_info;
   get_block_info_coarse(&plan->props, &coarse_info);
@@ -220,7 +254,7 @@ interpolate_plan interpolate_plan_3d_padding_aware_cuda_product(int n0, int n1, 
 {
   interpolate_plan wrapper = interpolate_plan_3d_padding_aware_cuda_split(n0, n1, n2, flags);
   pa_plan plan = (pa_plan) wrapper->detail;
-  plan->props.type = SPLIT_PRODUCT;
+  plan->props.type = INTERPOLATE_SPLIT_PRODUCT;
 
   plan->strategy = SEPARATE;
   const double separate_time = time_interpolate_split_product(wrapper, plan->props.dims);
@@ -348,6 +382,8 @@ static void pa_interpolate_execute_interleaved(const void *detail, rs_complex *i
   pa_plan plan = (pa_plan) detail;
   assert(plan->strategy == PACKED);
 
+  time_point_save(&plan->before);
+
   block_info_t coarse_info, fine_info;
   get_block_info_coarse(&plan->props, &coarse_info);
   get_block_info_fine(&plan->props, &fine_info);
@@ -372,6 +408,8 @@ static void pa_interpolate_execute_interleaved(const void *detail, rs_complex *i
   CUDA_CHECK(cudaMemcpy(out, thrust::raw_pointer_cast(&dev_out[0]), sizeof(rs_complex) * block_size * 8, cudaMemcpyDeviceToHost));
   CUDA_CHECK(cudaHostUnregister(out));
   CUDA_CHECK(cudaDeviceSynchronize());
+
+  time_point_save(&plan->after);
 }
 
 static void pa_interpolate_real(pa_plan plan, double *in, const thrust::device_ptr<double>& dev_out)
@@ -408,7 +446,9 @@ static void pa_interpolate_real(pa_plan plan, double *in, const thrust::device_p
 static void pa_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout)
 {
   pa_plan plan = (pa_plan) detail;
-  assert(SPLIT == plan->props.type || SPLIT_PRODUCT == plan->props.type);
+  assert(INTERPOLATE_SPLIT == plan->props.type || INTERPOLATE_SPLIT_PRODUCT == plan->props.type);
+
+  time_point_save(&plan->before);
 
   if (plan->strategy == PACKED)
   {
@@ -453,12 +493,17 @@ static void pa_interpolate_execute_split(const void *detail, double *rin, double
   {
     assert(0 && "Unkown strategy");
   }
+
+  time_point_save(&plan->after);
 }
 
-void pa_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out)
+static void pa_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out)
 {
   pa_plan plan = (pa_plan) detail;
-  assert(SPLIT_PRODUCT == plan->props.type);
+  assert(INTERPOLATE_SPLIT_PRODUCT == plan->props.type);
+
+  time_point_save(&plan->before);
+
   const size_t block_size = num_elements(&plan->props);
 
   if (plan->strategy == PACKED)
@@ -492,6 +537,8 @@ void pa_interpolate_execute_split_product(const void *detail, double *rin, doubl
     CUDA_CHECK(cudaHostUnregister(out));
     CUDA_CHECK(cudaDeviceSynchronize());
   }
+
+  time_point_save(&plan->after);
 }
 
 void pa_interpolate_print_timings(const void *detail)
