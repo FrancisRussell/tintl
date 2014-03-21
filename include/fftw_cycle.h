@@ -228,7 +228,7 @@ typedef unsigned long long ticks;
 static __inline__ ticks getticks(void)
 {
      unsigned a, d;
-     asm volatile("rdtsc" : "=a" (a), "=d" (d));
+     __asm__ volatile("rdtsc" : "=a" (a), "=d" (d));
      return ((ticks)a) | (((ticks)d) << 32);
 }
 
@@ -244,7 +244,7 @@ INLINE_ELAPSED(__inline__)
 typedef unsigned long long ticks;
 static ticks getticks(void)
 {
-    asm(" rdtsc; shl    $0x20,%rdx; mov    %eax,%eax; or     %rdx,%rax;    ");
+    __asm__(" rdtsc; shl    $0x20,%rdx; mov    %eax,%eax; or     %rdx,%rax;    ");
 }
 INLINE_ELAPSED(__inline__)
 #define HAVE_TICK_COUNTER
@@ -430,7 +430,7 @@ typedef unsigned int ticks;
 static __inline ticks getticks(void)
 {
      unsigned long cc;
-     cc = asm("rpcc %v0");
+     cc = __asm__("rpcc %v0");
      return (cc & 0xFFFFFFFF);
 }
 
