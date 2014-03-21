@@ -22,7 +22,7 @@ LIB_SOURCES = allocation.c common.c interpolate.c naive.c padding_aware.c \
 
 LIB_LDFLAGS_LINKER =
 LIB_LDFLAGS_COMPILER = -fPIC $(OPENMP_CFLAGS) $(FFTW_LDFLAGS)
-LIB_LDLIBS = $(FFTW_LDLIBS)
+LIB_LDLIBS = -lrt $(FFTW_LDLIBS)
 
 BIN_LDFLAGS_LINKER = -rpath=../lib -rpath=./lib
 BIN_LDFLAGS_COMPILER = -Llib $(OPENMP_CFLAGS)
