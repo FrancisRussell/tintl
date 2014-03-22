@@ -35,9 +35,6 @@ typedef struct
   fftw_plan n1_backward_real;
   fftw_plan n0_backward_real;
 
-  time_point_t before;
-  time_point_t after;
-
   time_point_t before_forward;
   time_point_t after_forward;
   time_point_t after_padding;
@@ -102,18 +99,7 @@ static void pa_set_flags(interpolate_plan parent, const int flags)
 
 static void pa_get_statistic_float(const interpolate_plan parent, const int statistic, const int index, stat_type_t *type, double *result)
 {
-  pa_plan plan = (pa_plan) parent;
-
-  switch(statistic)
-  {
-    case STATISTIC_EXECUTION_TIME:
-      *type = STATISTIC_EXECUTION;
-      *result = time_point_delta(&plan->before, &plan->after);
-      return;
-    default:
-      *type = STATISTIC_UNKNOWN;
-      return;
-  }
+  *type = STATISTIC_UNKNOWN;
 }
 
 static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)
@@ -378,8 +364,6 @@ static void pa_interpolate_execute_interleaved(interpolate_plan parent, fftw_com
   pa_plan plan = (pa_plan) parent;
   assert(plan->strategy == PACKED);
 
-  time_point_save(&plan->before);
-
   block_info_t coarse_info, fine_info;
   get_block_info_coarse(parent, &coarse_info);
   get_block_info_fine(parent, &fine_info);
@@ -396,8 +380,6 @@ static void pa_interpolate_execute_interleaved(interpolate_plan parent, fftw_com
   time_point_save(&plan->after_padding);
   backward_transform_c2c(plan, &fine_info, out);
   rs_free(input_copy);
-
-  time_point_save(&plan->after);
 }
 
 static void pa_interpolate_real(pa_plan plan, double *in, double *out)
@@ -432,8 +414,6 @@ static void pa_interpolate_execute_split(interpolate_plan parent, double *rin, d
   pa_plan plan = (pa_plan) parent;
   assert(INTERPOLATE_SPLIT == parent->type || INTERPOLATE_SPLIT_PRODUCT == parent->type);
 
-  time_point_save(&plan->before);
-
   if (plan->strategy == PACKED)
   {
     block_info_t coarse_info, fine_info;
@@ -466,16 +446,12 @@ static void pa_interpolate_execute_split(interpolate_plan parent, double *rin, d
   {
     assert(0 && "Unkown strategy");
   }
-
-  time_point_save(&plan->after);
 }
 
 void pa_interpolate_execute_split_product(interpolate_plan parent, double *rin, double *iin, double *out)
 {
   pa_plan plan = (pa_plan) parent;
   assert(INTERPOLATE_SPLIT_PRODUCT == parent->type);
-  time_point_save(&plan->before);
-
   const size_t block_size = num_elements(parent);
 
   if (plan->strategy == PACKED)
@@ -497,8 +473,6 @@ void pa_interpolate_execute_split_product(interpolate_plan parent, double *rin, 
     pointwise_multiply_real(8 * block_size, out, scratch_fine);
     rs_free(scratch_fine);
   }
-
-  time_point_save(&plan->after);
 }
 
 void pa_interpolate_print_timings(const interpolate_plan parent)

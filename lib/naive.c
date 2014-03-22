@@ -31,9 +31,6 @@ typedef struct
   fftw_plan real_forward;
   fftw_plan real_backward;
 
-  time_point_t before;
-  time_point_t after;
-
   time_point_t before_forward;
   time_point_t after_forward;
   time_point_t after_padding;
@@ -128,18 +125,7 @@ static void naive_set_flags(interpolate_plan parent, const int flags)
 
 static void naive_get_statistic_float(const interpolate_plan parent, int statistic, int index, stat_type_t *type, double *result)
 {
-  naive_plan plan = (naive_plan) parent;
-
-  switch(statistic)
-  {
-    case STATISTIC_EXECUTION_TIME:
-      *type = STATISTIC_EXECUTION;
-      *result = time_point_delta(&plan->before, &plan->after);
-      return;
-    default:
-      *type = STATISTIC_UNKNOWN;
-      return;
-  }
+  *type = STATISTIC_UNKNOWN;
 }
 
 interpolate_plan interpolate_plan_3d_naive_interleaved(int n0, int n1, int n2, int flags)
@@ -231,8 +217,6 @@ static void naive_interpolate_execute_interleaved(interpolate_plan parent, fftw_
   naive_plan plan = (naive_plan) parent;
   assert(plan->strategy == PACKED);
 
-  time_point_save(&plan->before);
-
   block_info_t coarse_info, fine_info;
   get_block_info_coarse(parent, &coarse_info);
   get_block_info_fine(parent, &fine_info);
@@ -249,8 +233,6 @@ static void naive_interpolate_execute_interleaved(interpolate_plan parent, fftw_
   time_point_save(&plan->after_padding);
   fftw_execute_dft(plan->interleaved_backward, out, out);
   time_point_save(&plan->after_backward);
-
-  time_point_save(&plan->after);
 
   rs_free(input_copy);
 }
@@ -288,8 +270,6 @@ static void naive_interpolate_execute_split(interpolate_plan parent, double *rin
   naive_plan plan = (naive_plan) parent;
   assert(INTERPOLATE_SPLIT == parent->type || INTERPOLATE_SPLIT_PRODUCT == parent->type);
 
-  time_point_save(&plan->before);
-
   if (plan->strategy == PACKED)
   {
     block_info_t coarse_info, fine_info;
@@ -323,16 +303,12 @@ static void naive_interpolate_execute_split(interpolate_plan parent, double *rin
   {
     assert(0 && "Unknown strategy.");
   }
-
-  time_point_save(&plan->after);
 }
 
 void naive_interpolate_execute_split_product(interpolate_plan parent, double *rin, double *iin, double *out)
 {
   naive_plan plan = (naive_plan) parent;
   assert(INTERPOLATE_SPLIT_PRODUCT == parent->type);
-
-  time_point_save(&plan->before);
 
   const size_t block_size = num_elements(parent);
 
@@ -359,8 +335,6 @@ void naive_interpolate_execute_split_product(interpolate_plan parent, double *ri
   {
     assert(0 && "Unknown strategy");
   }
-
-  time_point_save(&plan->after);
 }
 
 void naive_interpolate_print_timings(const interpolate_plan parent)

@@ -21,19 +21,25 @@ const char *interpolate_get_name(const interpolate_plan plan)
 void interpolate_execute_interleaved(const interpolate_plan plan, rs_complex *in, rs_complex *out)
 {
   validate_plan(plan);
+  time_point_save(&plan->before);
   plan->execute_interleaved(plan, in, out);
+  time_point_save(&plan->after);
 }
 
 void interpolate_execute_split(const interpolate_plan plan, double *rin, double *iin, double *rout, double *iout)
 {
   validate_plan(plan);
+  time_point_save(&plan->before);
   plan->execute_split(plan, rin, iin, rout, iout);
+  time_point_save(&plan->after);
 }
 
 void interpolate_execute_split_product(const interpolate_plan plan, double *rin, double *iin, double *out)
 {
   validate_plan(plan);
+  time_point_save(&plan->before);
   plan->execute_split_product(plan, rin, iin, out);
+  time_point_save(&plan->after);
 }
 
 void interpolate_print_timings(const interpolate_plan plan)
@@ -45,7 +51,16 @@ void interpolate_print_timings(const interpolate_plan plan)
 void interpolate_get_statistic_float(const interpolate_plan plan, int statistic, int index, stat_type_t *type, double *value)
 {
   validate_plan(plan);
-  plan->get_statistic_float(plan, statistic, index, type, value);
+  switch(statistic)
+  {
+    case STATISTIC_EXECUTION_TIME:
+      *type = STATISTIC_EXECUTION;
+      *value = time_point_delta(&plan->before, &plan->after);
+      break;
+    default:
+      plan->get_statistic_float(plan, statistic, index, type, value);
+      break;
+  }
 }
 
 void interpolate_set_flags(const interpolate_plan plan, const int flags)

@@ -33,9 +33,6 @@ typedef struct
   int has_real_plans;
   cufftHandle real_forward;
   cufftHandle real_backward;
-
-  time_point_t before;
-  time_point_t after;
 } naive_plan_s;
 
 
@@ -99,18 +96,7 @@ static void naive_set_flags(interpolate_plan parent, const int flags)
 
 static void naive_get_statistic_float(const interpolate_plan parent, int statistic, int index, stat_type_t *type, double *result)
 {
-  naive_plan plan = (naive_plan) parent;
-
-  switch(statistic)
-  {
-    case STATISTIC_EXECUTION_TIME:
-      *type = STATISTIC_EXECUTION;
-      *result = time_point_delta(&plan->before, &plan->after);
-      return;
-    default:
-      *type = STATISTIC_UNKNOWN;
-      return;
-  }
+  *type = STATISTIC_UNKNOWN;
 }
 
 static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)
@@ -217,8 +203,6 @@ static void naive_interpolate_execute_interleaved(interpolate_plan parent, rs_co
   thrust::device_vector<cuDoubleComplex> dev_in(block_size);
   thrust::device_vector<cuDoubleComplex> dev_out(block_size * 8);
 
-  time_point_save(&plan->before);
-
   CUDA_CHECK(cudaHostRegister(in, sizeof(rs_complex) * block_size, 0));
   CUDA_CHECK(cudaMemcpy(thrust::raw_pointer_cast(&dev_in[0]), in, sizeof(rs_complex) * block_size, cudaMemcpyHostToDevice));
   CUDA_CHECK(cudaHostUnregister(in));
@@ -237,8 +221,6 @@ static void naive_interpolate_execute_interleaved(interpolate_plan parent, rs_co
   CUDA_CHECK(cudaHostUnregister(out));
 
   CUDA_CHECK(cudaDeviceSynchronize());
-
-  time_point_save(&plan->after);
 }
 
 static void naive_interpolate_real(naive_plan plan, double *in, const thrust::device_ptr<double>& dev_out)
@@ -274,8 +256,6 @@ static void naive_interpolate_execute_split(interpolate_plan parent, double *rin
 {
   naive_plan plan = (naive_plan) parent;
   assert(INTERPOLATE_SPLIT == parent->type || INTERPOLATE_SPLIT_PRODUCT == parent->type);
-
-  time_point_save(&plan->before);
 
   if (plan->strategy == PACKED)
   {
@@ -320,8 +300,6 @@ static void naive_interpolate_execute_split(interpolate_plan parent, double *rin
   {
     assert(0 && "Unknown strategy.");
   }
-
-  time_point_save(&plan->after);
 }
 
 void naive_interpolate_execute_split_product(interpolate_plan parent, double *rin, double *iin, double *out)
@@ -329,8 +307,6 @@ void naive_interpolate_execute_split_product(interpolate_plan parent, double *ri
   naive_plan plan = (naive_plan) parent;
   assert(INTERPOLATE_SPLIT_PRODUCT == parent->type);
   const size_t block_size = num_elements(parent);
-
-  time_point_save(&plan->before);
 
   if (plan->strategy == PACKED)
   {
@@ -374,13 +350,9 @@ void naive_interpolate_execute_split_product(interpolate_plan parent, double *ri
   {
     assert(0 && "Unknown strategy");
   }
-
-  time_point_save(&plan->after);
 }
 
 void naive_interpolate_print_timings(const interpolate_plan parent)
 {
-  naive_plan plan = (naive_plan) parent;
-  printf("Interpolation: %f\n", time_point_delta(&plan->before, &plan->after));
 }
 

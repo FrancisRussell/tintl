@@ -6,6 +6,7 @@
 #include <forward.h>
 #include <interpolate.h>
 #include <assert.h>
+#include <timer.h>
 
 #ifdef __CUDACC__
 #undef __SSE2__
@@ -62,6 +63,10 @@ struct interpolate_plan_s
 
   /// Reference count
   int ref_cnt;
+
+  // Timing
+  time_point_t before;
+  time_point_t after;
 
   const char *(*get_name)(const interpolate_plan plan);
   void (*set_flags)(interpolate_plan plan, int flags);

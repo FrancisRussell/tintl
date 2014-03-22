@@ -43,9 +43,6 @@ typedef struct
   cufftHandle n0_backward_real;
 
   int has_real_plans;
-
-  time_point_t before;
-  time_point_t after;
 } pa_plan_s;
 
 typedef pa_plan_s *pa_plan;
@@ -106,18 +103,7 @@ static void pa_set_flags(interpolate_plan parent, const int flags)
 
 static void pa_get_statistic_float(const interpolate_plan parent, const int statistic, const int index, stat_type_t *type, double *result)
 {
-  pa_plan plan = (pa_plan) parent;
-
-  switch(statistic)
-  {
-    case STATISTIC_EXECUTION_TIME:
-      *type = STATISTIC_EXECUTION;
-      *result = time_point_delta(&plan->before, &plan->after);
-      return;
-    default:
-      *type = STATISTIC_UNKNOWN;
-      return;
-  }
+  *type = STATISTIC_UNKNOWN;
 }
 
 static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)
@@ -380,8 +366,6 @@ static void pa_interpolate_execute_interleaved(interpolate_plan parent, rs_compl
   pa_plan plan = (pa_plan) parent;
   assert(plan->strategy == PACKED);
 
-  time_point_save(&plan->before);
-
   block_info_t coarse_info, fine_info;
   get_block_info_coarse(parent, &coarse_info);
   get_block_info_fine(parent, &fine_info);
@@ -406,8 +390,6 @@ static void pa_interpolate_execute_interleaved(interpolate_plan parent, rs_compl
   CUDA_CHECK(cudaMemcpy(out, thrust::raw_pointer_cast(&dev_out[0]), sizeof(rs_complex) * block_size * 8, cudaMemcpyDeviceToHost));
   CUDA_CHECK(cudaHostUnregister(out));
   CUDA_CHECK(cudaDeviceSynchronize());
-
-  time_point_save(&plan->after);
 }
 
 static void pa_interpolate_real(pa_plan plan, double *in, const thrust::device_ptr<double>& dev_out)
@@ -446,8 +428,6 @@ static void pa_interpolate_execute_split(interpolate_plan parent, double *rin, d
 {
   pa_plan plan = (pa_plan) parent;
   assert(INTERPOLATE_SPLIT == parent->type || INTERPOLATE_SPLIT_PRODUCT == parent->type);
-
-  time_point_save(&plan->before);
 
   if (plan->strategy == PACKED)
   {
@@ -492,16 +472,12 @@ static void pa_interpolate_execute_split(interpolate_plan parent, double *rin, d
   {
     assert(0 && "Unkown strategy");
   }
-
-  time_point_save(&plan->after);
 }
 
 static void pa_interpolate_execute_split_product(interpolate_plan parent, double *rin, double *iin, double *out)
 {
   pa_plan plan = (pa_plan) parent;
   assert(INTERPOLATE_SPLIT_PRODUCT == parent->type);
-
-  time_point_save(&plan->before);
 
   const size_t block_size = num_elements(parent);
 
@@ -536,17 +512,8 @@ static void pa_interpolate_execute_split_product(interpolate_plan parent, double
     CUDA_CHECK(cudaHostUnregister(out));
     CUDA_CHECK(cudaDeviceSynchronize());
   }
-
-  time_point_save(&plan->after);
 }
 
 void pa_interpolate_print_timings(const interpolate_plan plan)
 {
-  /*
-  pa_plan plan = (pa_plan) detail;
-  printf("Forward: %f\n", time_point_delta(&plan->before_forward, &plan->after_forward));
-  printf("Padding: %f\n", time_point_delta(&plan->after_forward, &plan->after_padding));
-  for(int dim = 0; dim < 3; ++dim)
-    printf("Backward %d: %f\n", dim, time_point_delta(&plan->after_padding, &plan->after_backward[dim]));
-  */
 }
