@@ -31,7 +31,7 @@ static void block_copy_coarse_to_fine_interleaved(interpolate_plan plan, size_t 
     const block_info_t *from_info, const fftw_complex *from,
     const block_info_t *to_info, fftw_complex *to);
 
-void block_copy_coarse_to_fine_interleaved(interpolate_plan plan, size_t n0, size_t n1, size_t n2,
+static void block_copy_coarse_to_fine_interleaved(interpolate_plan plan, size_t n0, size_t n1, size_t n2,
     const block_info_t *from_info, const fftw_complex *from,
     const block_info_t *to_info, fftw_complex *to)
 {

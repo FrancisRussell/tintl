@@ -523,6 +523,6 @@ static void pa_interpolate_execute_split_product(interpolate_plan parent, double
   }
 }
 
-void pa_interpolate_print_timings(const interpolate_plan plan)
+static void pa_interpolate_print_timings(const interpolate_plan plan)
 {
 }

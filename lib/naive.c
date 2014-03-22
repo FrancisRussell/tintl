@@ -305,7 +305,7 @@ static void naive_interpolate_execute_split(interpolate_plan parent, double *rin
   }
 }
 
-void naive_interpolate_execute_split_product(interpolate_plan parent, double *rin, double *iin, double *out)
+static void naive_interpolate_execute_split_product(interpolate_plan parent, double *rin, double *iin, double *out)
 {
   naive_plan plan = (naive_plan) parent;
   assert(INTERPOLATE_SPLIT_PRODUCT == parent->type);
@@ -337,7 +337,7 @@ void naive_interpolate_execute_split_product(interpolate_plan parent, double *ri
   }
 }
 
-void naive_interpolate_print_timings(const interpolate_plan parent)
+static void naive_interpolate_print_timings(const interpolate_plan parent)
 {
   naive_plan plan = (naive_plan) parent;
   printf("Forward: %f\n", time_point_delta(&plan->before_forward, &plan->after_forward));

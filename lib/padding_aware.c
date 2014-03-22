@@ -448,7 +448,7 @@ static void pa_interpolate_execute_split(interpolate_plan parent, double *rin, d
   }
 }
 
-void pa_interpolate_execute_split_product(interpolate_plan parent, double *rin, double *iin, double *out)
+static void pa_interpolate_execute_split_product(interpolate_plan parent, double *rin, double *iin, double *out)
 {
   pa_plan plan = (pa_plan) parent;
   assert(INTERPOLATE_SPLIT_PRODUCT == parent->type);
@@ -475,7 +475,7 @@ void pa_interpolate_execute_split_product(interpolate_plan parent, double *rin, 
   }
 }
 
-void pa_interpolate_print_timings(const interpolate_plan parent)
+static void pa_interpolate_print_timings(const interpolate_plan parent)
 {
   pa_plan plan = (pa_plan) parent;
   printf("Forward: %f\n", time_point_delta(&plan->before_forward, &plan->after_forward));

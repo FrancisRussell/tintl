@@ -934,7 +934,7 @@ static void phase_shift_interpolate_execute_split(interpolate_plan parent, doubl
   }
 }
 
-void phase_shift_interpolate_execute_split_product(interpolate_plan parent, double *rin, double *iin, double *out)
+static void phase_shift_interpolate_execute_split_product(interpolate_plan parent, double *rin, double *iin, double *out)
 {
   phase_shift_plan plan = (phase_shift_plan) parent;
   assert(INTERPOLATE_SPLIT_PRODUCT == parent->type);
@@ -971,7 +971,7 @@ void phase_shift_interpolate_execute_split_product(interpolate_plan parent, doub
   }
 }
 
-void phase_shift_interpolate_print_timings(const interpolate_plan parent)
+static void phase_shift_interpolate_print_timings(const interpolate_plan parent)
 {
   phase_shift_plan plan = (phase_shift_plan) parent;
   printf("Expand2: %f\n", time_point_delta(&plan->before_expand2, &plan->before_expand1));
