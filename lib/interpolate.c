@@ -103,6 +103,7 @@ int interpolate_dec_ref_count(interpolate_plan plan)
   if (count == 0)
   {
     plan->destroy_detail(plan);
+    plan->magic = 0;
     free(plan);
   }
 
