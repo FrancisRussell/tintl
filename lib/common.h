@@ -21,7 +21,7 @@ extern "C"
 {
 #endif
 
-static unsigned interpolate_plan_magic_value = 0x1e7f21e2;
+static const unsigned interpolate_plan_magic_value = 0x1e7f21e2;
 
 enum
 {
