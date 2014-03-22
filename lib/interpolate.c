@@ -152,7 +152,7 @@ static int global_plan_cache_insert(const plan_key_t *key, interpolate_plan plan
 
 typedef interpolate_plan (*plan_constructor_t)(int n0, int n1, int n2, int flags);
 
-static interpolate_plan find_best_plan(double (*timer)(interpolate_plan, const int*),
+static interpolate_plan find_best_plan(double (*timer)(interpolate_plan),
   plan_constructor_t *constructors,
   int n0, int n1, int n2, interpolation_t type, int flags)
 {
@@ -169,7 +169,6 @@ static interpolate_plan find_best_plan(double (*timer)(interpolate_plan, const i
       return cached_plan;
   }
 
-  const int dims[] = {n0, n1, n2};
   int plan_type_count = 0;
 
   while(constructors[plan_type_count] != NULL)
@@ -181,7 +180,7 @@ static interpolate_plan find_best_plan(double (*timer)(interpolate_plan, const i
   for(size_t plan_id = 0; plan_id < plan_type_count; ++plan_id)
   {
     interpolate_plan plan = constructors[plan_id](n0, n1, n2, flags);
-    const double time = timer(plan, dims);
+    const double time = timer(plan);
 
     if (time < best_time)
     {
