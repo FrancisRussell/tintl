@@ -65,8 +65,6 @@ static interpolate_plan allocate_plan(void)
   interpolate_plan holder = malloc(sizeof(naive_plan_s));
   assert(holder != NULL);
 
-  holder->ref_cnt = 1;
-
   holder->get_name = get_name;
   holder->set_flags = naive_set_flags;
   holder->get_statistic_float = naive_get_statistic_float;

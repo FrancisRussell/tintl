@@ -62,6 +62,7 @@ static void block_copy_coarse_to_fine_interleaved(interpolate_plan plan, size_t 
 void populate_properties(interpolate_plan plan, interpolation_t type, size_t n0, size_t n1, size_t n2)
 {
   plan->magic = interpolate_plan_magic_value;
+  plan->ref_cnt = 1;
   plan->type = type;
   plan->input_size.dims[0] = n2;
   plan->input_size.dims[1] = n1;

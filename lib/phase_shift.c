@@ -164,8 +164,6 @@ static interpolate_plan allocate_plan(void)
   interpolate_plan holder = malloc(sizeof(phase_shift_plan_s));
   assert(holder != NULL);
 
-  holder->ref_cnt = 1;
-
   holder->get_name = get_name;
   holder->set_flags = phase_shift_set_flags;
   holder->get_statistic_float = phase_shift_get_statistic_float;
