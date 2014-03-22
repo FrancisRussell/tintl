@@ -1,10 +1,31 @@
 #include "common.h"
 #include "common_cuda.h"
+#include <cuda_runtime.h>
 #include <cuComplex.h>
 #include <cufft.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+
+int has_acceptable_cuda_support(void)
+{
+  int device;
+  const enum cudaError error = cudaGetDevice(&device);
+
+  if (error == cudaErrorNoDevice)
+    return 0;
+
+  CUDA_CHECK(error);
+
+  struct cudaDeviceProp properties;
+  CUDA_CHECK(cudaGetDeviceProperties(&properties, device));
+
+  // We need compute capability 1.3 for double precision.
+  if (properties.major > 1 || (properties.major == 1 && properties.minor >= 3))
+    return 1;
+  else
+    return 0;
+}
 
 __global__ void scale_z(block_info_t input_size, block_info_t block_info, cuDoubleComplex *coarse)
 {

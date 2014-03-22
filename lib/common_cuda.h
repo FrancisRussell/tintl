@@ -12,6 +12,8 @@ extern "C"
 #define CUDA_CHECK(err) printCudaDiagnostics( err, __FILE__, __LINE__)
 #define CUFFT_CHECK(err) printCuFFTDiagnostics( err, __FILE__, __LINE__)
 
+int has_acceptable_cuda_support(void);
+
 void halve_nyquist_components_cuda(interpolate_plan plan, block_info_t *block_info, cuDoubleComplex *coarse);
 
 void pad_coarse_to_fine_interleaved_cuda(interpolate_plan plan,

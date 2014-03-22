@@ -14,8 +14,8 @@
 #include <math.h>
 #include <assert.h>
 #include <string.h>
+#include <cuda_runtime.h>
 #include <cufft.h>
-#include <cuda_runtime_api.h>
 
 typedef enum
 {
@@ -173,6 +173,9 @@ static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int 
 
 interpolate_plan interpolate_plan_3d_padding_aware_cuda_interleaved(int n0, int n1, int n2, int flags)
 {
+  if (!has_acceptable_cuda_support())
+    return NULL;
+
   interpolate_plan wrapper = allocate_plan();
   pa_plan plan = (pa_plan) wrapper;
 
@@ -184,6 +187,9 @@ interpolate_plan interpolate_plan_3d_padding_aware_cuda_interleaved(int n0, int 
 
 interpolate_plan interpolate_plan_3d_padding_aware_cuda_split(int n0, int n1, int n2, int flags)
 {
+  if (!has_acceptable_cuda_support())
+    return NULL;
+
   interpolate_plan parent = allocate_plan();
   pa_plan plan = (pa_plan) parent;
 
@@ -218,7 +224,7 @@ interpolate_plan interpolate_plan_3d_padding_aware_cuda_split(int n0, int n1, in
   }
 
   // Interpolation in direction 0, iteration in direction 1, all frequencies
-  CUFFT_CHECK(cufftPlanMany(&plan->n0_backward_real, 1, &fine_info.dims[0], 
+  CUFFT_CHECK(cufftPlanMany(&plan->n0_backward_real, 1, &fine_info.dims[0],
       &fine_info.dims[0], transformed_fine_info.strides[0], transformed_fine_info.strides[1],
       &fine_info.dims[0], fine_info.strides[0],             fine_info.strides[1],
       CUFFT_Z2D, fine_info.dims[1] * fine_info.dims[2]));
@@ -236,6 +242,9 @@ interpolate_plan interpolate_plan_3d_padding_aware_cuda_split(int n0, int n1, in
 
 interpolate_plan interpolate_plan_3d_padding_aware_cuda_product(int n0, int n1, int n2, int flags)
 {
+  if (!has_acceptable_cuda_support())
+    return NULL;
+
   interpolate_plan parent = interpolate_plan_3d_padding_aware_cuda_split(n0, n1, n2, flags);
   pa_plan plan = (pa_plan) parent;
   parent->type = INTERPOLATE_SPLIT_PRODUCT;
@@ -381,9 +390,9 @@ static void pa_interpolate_execute_interleaved(interpolate_plan parent, rs_compl
   CUFFT_CHECK(cufftExecZ2Z(plan->interleaved_forward, thrust::raw_pointer_cast(&dev_in[0]), thrust::raw_pointer_cast(&dev_in[0]), CUFFT_FORWARD));
 
   halve_nyquist_components_cuda(parent, &coarse_info, thrust::raw_pointer_cast(&dev_in[0]));
-  pad_coarse_to_fine_interleaved_cuda(parent, 
+  pad_coarse_to_fine_interleaved_cuda(parent,
     &coarse_info, thrust::raw_pointer_cast(&dev_in[0]), &fine_info, thrust::raw_pointer_cast(&dev_out[0]), 0);
-  
+
   backward_transform_c2c(plan, &fine_info, thrust::raw_pointer_cast(&dev_out[0]));
 
   CUDA_CHECK(cudaHostRegister(out, sizeof(rs_complex) * block_size * 8, 0));
@@ -416,11 +425,11 @@ static void pa_interpolate_real(pa_plan plan, double *in, const thrust::device_p
   CUFFT_CHECK(cufftExecD2Z(plan->real_forward, thrust::raw_pointer_cast(&dev_in[0]), thrust::raw_pointer_cast(&scratch_coarse[0])));
 
   halve_nyquist_components_cuda(parent, &transformed_coarse_info, thrust::raw_pointer_cast(&scratch_coarse[0]));
-  pad_coarse_to_fine_interleaved_cuda(parent, 
-    &transformed_coarse_info, thrust::raw_pointer_cast(&scratch_coarse[0]), 
+  pad_coarse_to_fine_interleaved_cuda(parent,
+    &transformed_coarse_info, thrust::raw_pointer_cast(&scratch_coarse[0]),
     &transformed_fine_info,   thrust::raw_pointer_cast(&scratch_fine[0]), 1);
 
-  backward_transform_c2r(plan, &transformed_fine_info, thrust::raw_pointer_cast(&scratch_fine[0]), 
+  backward_transform_c2r(plan, &transformed_fine_info, thrust::raw_pointer_cast(&scratch_fine[0]),
     &fine_info, thrust::raw_pointer_cast(dev_out));
 }
 

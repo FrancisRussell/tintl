@@ -12,7 +12,6 @@
 #include <cuda_runtime.h>
 #include <cufft.h>
 #include <assert.h>
-#include <cuda_runtime_api.h>
 
 typedef enum
 {
@@ -119,6 +118,9 @@ static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, i
 
 interpolate_plan interpolate_plan_3d_naive_cuda_interleaved(int n0, int n1, int n2, int flags)
 {
+  if (!has_acceptable_cuda_support())
+    return NULL;
+
   interpolate_plan wrapper = allocate_plan();
   naive_plan plan = (naive_plan) wrapper;
 
@@ -130,6 +132,9 @@ interpolate_plan interpolate_plan_3d_naive_cuda_interleaved(int n0, int n1, int 
 
 interpolate_plan interpolate_plan_3d_naive_cuda_split(int n0, int n1, int n2, int flags)
 {
+  if (!has_acceptable_cuda_support())
+    return NULL;
+
   interpolate_plan parent = allocate_plan();
   naive_plan plan = (naive_plan) parent;
 
@@ -164,6 +169,9 @@ interpolate_plan interpolate_plan_3d_naive_cuda_split(int n0, int n1, int n2, in
 
 interpolate_plan interpolate_plan_3d_naive_cuda_product(int n0, int n1, int n2, int flags)
 {
+  if (!has_acceptable_cuda_support())
+    return NULL;
+
   interpolate_plan parent = interpolate_plan_3d_naive_cuda_split(n0, n1, n2, flags);
   parent->type = INTERPOLATE_SPLIT_PRODUCT;
   naive_plan plan = (naive_plan) parent;
@@ -210,10 +218,10 @@ static void naive_interpolate_execute_interleaved(interpolate_plan parent, rs_co
   CUFFT_CHECK(cufftExecZ2Z(plan->interleaved_forward, thrust::raw_pointer_cast(&dev_in[0]), thrust::raw_pointer_cast(&dev_in[0]), CUFFT_FORWARD));
 
   halve_nyquist_components_cuda(parent, &coarse_info, thrust::raw_pointer_cast(&dev_in[0]));
-  pad_coarse_to_fine_interleaved_cuda(parent, 
+  pad_coarse_to_fine_interleaved_cuda(parent,
     &coarse_info, thrust::raw_pointer_cast(&dev_in[0]), &fine_info, thrust::raw_pointer_cast(&dev_out[0]), 0);
 
-  CUFFT_CHECK(cufftExecZ2Z(plan->interleaved_backward, 
+  CUFFT_CHECK(cufftExecZ2Z(plan->interleaved_backward,
     thrust::raw_pointer_cast(&dev_out[0]), thrust::raw_pointer_cast(&dev_out[0]), CUFFT_INVERSE));
 
   CUDA_CHECK(cudaHostRegister(out, sizeof(rs_complex) * block_size * 8, 0));
@@ -246,7 +254,7 @@ static void naive_interpolate_real(naive_plan plan, double *in, const thrust::de
   CUFFT_CHECK(cufftExecD2Z(plan->real_forward, thrust::raw_pointer_cast(&dev_in[0]), thrust::raw_pointer_cast(&scratch_coarse[0])));
 
   halve_nyquist_components_cuda(parent, &transformed_coarse_info, thrust::raw_pointer_cast(&scratch_coarse[0]));
-  pad_coarse_to_fine_interleaved_cuda(parent, 
+  pad_coarse_to_fine_interleaved_cuda(parent,
     &transformed_coarse_info, thrust::raw_pointer_cast(&scratch_coarse[0]), &transformed_fine_info, thrust::raw_pointer_cast(&scratch_fine[0]), 1);
 
   CUFFT_CHECK(cufftExecZ2D(plan->real_backward, thrust::raw_pointer_cast(&scratch_fine[0]), thrust::raw_pointer_cast(dev_out)));
