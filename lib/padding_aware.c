@@ -22,7 +22,7 @@ typedef enum
 /// Implementation-specific structure for padding-aware interpolation plans.
 typedef struct
 {
-  interpolate_properties_t props;
+  struct interpolate_plan_s common;
   strategy_t strategy;
 
   fftw_plan interleaved_forward;
@@ -49,18 +49,18 @@ typedef pa_plan_s *pa_plan;
 static interpolate_plan allocate_plan(void);
 
 /* Interface functions */
-static const char *get_name(const void *detail);
-static void pa_set_flags(const void *detail, int flags);
-static void pa_get_statistic_float(const void *detail, int statistic, int index, stat_type_t *type, double *value);
-static void pa_interpolate_execute_interleaved(const void *detail, fftw_complex *in, fftw_complex *out);
-static void pa_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout);
-static void pa_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out);
-static void pa_interpolate_print_timings(const void *detail);
-static void pa_interpolate_destroy_detail(void *detail);
+static const char *get_name(const interpolate_plan plan);
+static void pa_set_flags(interpolate_plan plan, int flags);
+static void pa_get_statistic_float(const interpolate_plan plan, int statistic, int index, stat_type_t *type, double *value);
+static void pa_interpolate_execute_interleaved(interpolate_plan plan, fftw_complex *in, fftw_complex *out);
+static void pa_interpolate_execute_split(interpolate_plan plan, double *rin, double *iin, double *rout, double *iout);
+static void pa_interpolate_execute_split_product(interpolate_plan plan, double *rin, double *iin, double *out);
+static void pa_interpolate_print_timings(const interpolate_plan plan);
+static void pa_interpolate_destroy_detail(interpolate_plan plan);
 
 static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int n2, int flags);
 
-static const char *get_name(const void *detail)
+static const char *get_name(const interpolate_plan plan)
 {
   return "padding-aware";
 }
@@ -69,13 +69,10 @@ static interpolate_plan allocate_plan(void)
 {
   setup_threading();
 
-  interpolate_plan holder = malloc(sizeof(interpolate_plan_s));
+  interpolate_plan holder = malloc(sizeof(pa_plan_s));
   assert(holder != NULL);
 
   holder->ref_cnt = 1;
-
-  holder->detail = malloc(sizeof(pa_plan_s));
-  assert(holder->detail != NULL);
 
   holder->get_name = get_name;
   holder->set_flags = pa_set_flags;
@@ -89,9 +86,9 @@ static interpolate_plan allocate_plan(void)
   return holder;
 }
 
-static void pa_set_flags(const void *detail, const int flags)
+static void pa_set_flags(interpolate_plan parent, const int flags)
 {
-  pa_plan plan = (pa_plan) detail;
+  pa_plan plan = (pa_plan) parent;
 
   const int conflicting_layouts = PREFER_PACKED_LAYOUT | PREFER_SPLIT_LAYOUT;
   assert((flags & conflicting_layouts) != conflicting_layouts);
@@ -103,9 +100,9 @@ static void pa_set_flags(const void *detail, const int flags)
     plan->strategy = SEPARATE;
 }
 
-static void pa_get_statistic_float(const void *detail, const int statistic, const int index, stat_type_t *type, double *result)
+static void pa_get_statistic_float(const interpolate_plan parent, const int statistic, const int index, stat_type_t *type, double *result)
 {
-  pa_plan plan = (pa_plan) detail;
+  pa_plan plan = (pa_plan) parent;
 
   switch(statistic)
   {
@@ -121,16 +118,18 @@ static void pa_get_statistic_float(const void *detail, const int statistic, cons
 
 static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)
 {
-  populate_properties(&plan->props, type, n0, n1, n2);
-  const size_t block_size = num_elements(&plan->props);
+  populate_properties((interpolate_plan) plan, type, n0, n1, n2);
+  interpolate_plan parent = cast_to_plan(plan);
+
+  const size_t block_size = num_elements(parent);
 
   fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
   fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
 
   block_info_t fine_info;
-  get_block_info_fine(&plan->props, &fine_info);
+  get_block_info_fine(parent, &fine_info);
 
-  int rev_dims[] = { plan->props.dims[2], plan->props.dims[1], plan->props.dims[0] };
+  int rev_dims[] = { plan_input_size(parent, 2), plan_input_size(parent, 1), plan_input_size(parent, 0) };
   plan->interleaved_forward = fftw_plan_dft(3, rev_dims, scratch_coarse, scratch_coarse, FFTW_FORWARD, flags);
   plan->real_forward = NULL;
 
@@ -139,28 +138,28 @@ static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int 
   plan->n0_backward_real = NULL;
 
   // Interpolation in direction 2, iteration in direction 0, positive frequencies
-  plan->n2_backward_interleaved[0] = fftw_plan_many_dft(1, &fine_info.dims[2], corner_size(plan->props.dims[0], 0),
+  plan->n2_backward_interleaved[0] = fftw_plan_many_dft(1, &fine_info.dims[2], corner_size(plan_input_size(parent, 0), 0),
       scratch_fine, NULL, fine_info.strides[2], fine_info.strides[0],
       scratch_fine, NULL, fine_info.strides[2], fine_info.strides[0],
       FFTW_BACKWARD, flags);
   assert(plan->n2_backward_interleaved[0] != NULL);
 
   // Interpolation in direction 2, iteration in direction 0, negative frequencies
-  plan->n2_backward_interleaved[1] = fftw_plan_many_dft(1, &fine_info.dims[2], corner_size(plan->props.dims[0], 1),
+  plan->n2_backward_interleaved[1] = fftw_plan_many_dft(1, &fine_info.dims[2], corner_size(plan_input_size(parent, 0), 1),
       scratch_fine, NULL, fine_info.strides[2], fine_info.strides[0],
       scratch_fine, NULL, fine_info.strides[2], fine_info.strides[0],
       FFTW_BACKWARD, flags);
   assert(plan->n2_backward_interleaved[1] != NULL);
 
   // Interpolation in direction 1, iteration in direction 0, positive frequencies
-  plan->n1_backward_interleaved[0] = fftw_plan_many_dft(1, &fine_info.dims[1], corner_size(plan->props.dims[0], 0),
+  plan->n1_backward_interleaved[0] = fftw_plan_many_dft(1, &fine_info.dims[1], corner_size(plan_input_size(parent, 0), 0),
       scratch_fine, NULL, fine_info.strides[1], fine_info.strides[0],
       scratch_fine, NULL, fine_info.strides[1], fine_info.strides[0],
       FFTW_BACKWARD, flags);
   assert(plan->n1_backward_interleaved[0] != NULL);
 
   // Interpolation in direction 1, iteration in direction 0, negative frequencies
-  plan->n1_backward_interleaved[1] = fftw_plan_many_dft(1, &fine_info.dims[1], corner_size(plan->props.dims[0], 1),
+  plan->n1_backward_interleaved[1] = fftw_plan_many_dft(1, &fine_info.dims[1], corner_size(plan_input_size(parent, 0), 1),
       scratch_fine, NULL, fine_info.strides[1], fine_info.strides[0],
       scratch_fine, NULL, fine_info.strides[1], fine_info.strides[0],
       FFTW_BACKWARD, flags);
@@ -179,29 +178,29 @@ static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int 
 
 interpolate_plan interpolate_plan_3d_padding_aware_interleaved(int n0, int n1, int n2, int flags)
 {
-  interpolate_plan wrapper = allocate_plan();
-  pa_plan plan = (pa_plan) wrapper->detail;
+  interpolate_plan parent = allocate_plan();
+  pa_plan plan = (pa_plan) parent;
 
   flags |= FFTW_MEASURE;
   plan_common(plan, INTERPOLATE_INTERLEAVED, n0, n1, n2, flags);
   plan->strategy = PACKED;
 
-  return wrapper;
+  return parent;
 }
 
 interpolate_plan interpolate_plan_3d_padding_aware_split(int n0, int n1, int n2, int flags)
 {
-  interpolate_plan wrapper = allocate_plan();
-  pa_plan plan = (pa_plan) wrapper->detail;
+  interpolate_plan parent = allocate_plan();
+  pa_plan plan = (pa_plan) parent;
 
   flags |= FFTW_MEASURE;
   plan_common(plan, INTERPOLATE_SPLIT, n0, n1, n2, flags);
 
   block_info_t coarse_info, fine_info, transformed_coarse_info, transformed_fine_info;
-  get_block_info_coarse(&plan->props, &coarse_info);
-  get_block_info_fine(&plan->props, &fine_info);
-  get_block_info_real_recip_coarse(&plan->props, &transformed_coarse_info);
-  get_block_info_real_recip_fine(&plan->props, &transformed_fine_info);
+  get_block_info_coarse(parent, &coarse_info);
+  get_block_info_fine(parent, &fine_info);
+  get_block_info_real_recip_coarse(parent, &transformed_coarse_info);
+  get_block_info_real_recip_fine(parent, &transformed_fine_info);
 
   const size_t block_size = num_elements_block(&coarse_info);
   const size_t transformed_size_coarse = num_elements_block(&transformed_coarse_info);
@@ -213,18 +212,18 @@ interpolate_plan interpolate_plan_3d_padding_aware_split(int n0, int n1, int n2,
   fftw_complex *const scratch_fine_complex = rs_alloc_complex(transformed_size_fine);
   double *const scratch_fine_real = rs_alloc_real(8 * block_size);
 
-  int rev_dims[] = { plan->props.dims[2], plan->props.dims[1], plan->props.dims[0] };
+  int rev_dims[] = { plan_input_size(parent, 2), plan_input_size(parent, 1), plan_input_size(parent, 0) };
   plan->real_forward = fftw_plan_dft_r2c(3, rev_dims, scratch_coarse_real, scratch_coarse_complex, flags);
 
   // Interpolation in direction 2, iteration in direction 0, positive frequencies
-  plan->n2_backward_real = fftw_plan_many_dft(1, &transformed_fine_info.dims[2], corner_size(plan->props.dims[0], 0),
+  plan->n2_backward_real = fftw_plan_many_dft(1, &transformed_fine_info.dims[2], corner_size(plan_input_size(parent, 0), 0),
       scratch_fine_complex, NULL, transformed_fine_info.strides[2], transformed_fine_info.strides[0],
       scratch_fine_complex, NULL, transformed_fine_info.strides[2], transformed_fine_info.strides[0],
       FFTW_BACKWARD, flags);
   assert(plan->n2_backward_real != NULL);
 
   // Interpolation in direction 1, iteration in direction 0, positive frequencies
-  plan->n1_backward_real = fftw_plan_many_dft(1, &transformed_fine_info.dims[1], corner_size(plan->props.dims[0], 0),
+  plan->n1_backward_real = fftw_plan_many_dft(1, &transformed_fine_info.dims[1], corner_size(plan_input_size(parent, 0), 0),
       scratch_fine_complex, NULL, transformed_fine_info.strides[1], transformed_fine_info.strides[0],
       scratch_fine_complex, NULL, transformed_fine_info.strides[1], transformed_fine_info.strides[0],
       FFTW_BACKWARD, flags);
@@ -243,32 +242,32 @@ interpolate_plan interpolate_plan_3d_padding_aware_split(int n0, int n1, int n2,
   rs_free(scratch_fine_complex);
 
   plan->strategy = SEPARATE;
-  const double separate_time = time_interpolate_split(wrapper, plan->props.dims);
+  const double separate_time = time_interpolate_split(parent);
   plan->strategy = PACKED;
-  const double packed_time = time_interpolate_split(wrapper, plan->props.dims);
+  const double packed_time = time_interpolate_split(parent);
   plan->strategy = (separate_time < packed_time) ? SEPARATE : PACKED;
 
-  return wrapper;
+  return parent;
 }
 
 interpolate_plan interpolate_plan_3d_padding_aware_product(int n0, int n1, int n2, int flags)
 {
-  interpolate_plan wrapper = interpolate_plan_3d_padding_aware_split(n0, n1, n2, flags);
-  pa_plan plan = (pa_plan) wrapper->detail;
-  plan->props.type = INTERPOLATE_SPLIT_PRODUCT;
+  interpolate_plan parent = interpolate_plan_3d_padding_aware_split(n0, n1, n2, flags);
+  parent->type = INTERPOLATE_SPLIT_PRODUCT;
+  pa_plan plan = (pa_plan) parent;
 
   plan->strategy = SEPARATE;
-  const double separate_time = time_interpolate_split_product(wrapper, plan->props.dims);
+  const double separate_time = time_interpolate_split_product(parent);
   plan->strategy = PACKED;
-  const double packed_time = time_interpolate_split_product(wrapper, plan->props.dims);
+  const double packed_time = time_interpolate_split_product(parent);
   plan->strategy = (separate_time < packed_time) ? SEPARATE : PACKED;
 
-  return wrapper;
+  return parent;
 }
 
-static void pa_interpolate_destroy_detail(void *detail)
+static void pa_interpolate_destroy_detail(interpolate_plan parent)
 {
-  pa_plan plan = (pa_plan) detail;
+  pa_plan plan = (pa_plan) parent;
 
   fftw_destroy_plan(plan->interleaved_forward);
 
@@ -284,17 +283,16 @@ static void pa_interpolate_destroy_detail(void *detail)
   fftw_destroy_plan_maybe_null(plan->n2_backward_real);
   fftw_destroy_plan_maybe_null(plan->n1_backward_real);
   fftw_destroy_plan_maybe_null(plan->n0_backward_real);
-
-  free(plan);
 }
 
 static void backward_transform_c2c(const pa_plan plan, const block_info_t *data_info, fftw_complex *data)
 {
   size_t corner_sizes[3][2];
+  interpolate_plan parent = cast_to_plan(plan);
 
   for(int negative = 0; negative < 2; ++negative)
     for(int dim = 0; dim < 3; ++dim)
-      corner_sizes[dim][negative] = corner_size(plan->props.dims[dim], negative);
+      corner_sizes[dim][negative] = corner_size(plan_input_size(parent, dim), negative);
 
   // Interpolation in direction 2
   for(size_t y = 0; y < corner_sizes[1][0]; ++y)
@@ -340,10 +338,11 @@ static void backward_transform_c2r(const pa_plan plan,
   const block_info_t *to_info, double *to)
 {
   size_t corner_sizes[3][2];
+  interpolate_plan parent = cast_to_plan(plan);
 
   for(int negative = 0; negative < 2; ++negative)
     for(int dim = 0; dim < 3; ++dim)
-      corner_sizes[dim][negative] = corner_size(plan->props.dims[dim], negative);
+      corner_sizes[dim][negative] = corner_size(plan_input_size(parent, dim), negative);
 
   // Interpolation in direction 2
   for(size_t y = 0; y < corner_sizes[1][0]; ++y)
@@ -374,16 +373,16 @@ static void backward_transform_c2r(const pa_plan plan,
   time_point_save(&plan->after_backward[0]);
 }
 
-static void pa_interpolate_execute_interleaved(const void *detail, fftw_complex *in, fftw_complex *out)
+static void pa_interpolate_execute_interleaved(interpolate_plan parent, fftw_complex *in, fftw_complex *out)
 {
-  pa_plan plan = (pa_plan) detail;
+  pa_plan plan = (pa_plan) parent;
   assert(plan->strategy == PACKED);
 
   time_point_save(&plan->before);
 
   block_info_t coarse_info, fine_info;
-  get_block_info_coarse(&plan->props, &coarse_info);
-  get_block_info_fine(&plan->props, &fine_info);
+  get_block_info_coarse(parent, &coarse_info);
+  get_block_info_fine(parent, &fine_info);
 
   const size_t block_size = num_elements_block(&coarse_info);
   fftw_complex *const input_copy = rs_alloc_complex(block_size);
@@ -392,8 +391,8 @@ static void pa_interpolate_execute_interleaved(const void *detail, fftw_complex 
   time_point_save(&plan->before_forward);
   fftw_execute_dft(plan->interleaved_forward, input_copy, input_copy);
   time_point_save(&plan->after_forward);
-  halve_nyquist_components(&plan->props, &coarse_info, input_copy);
-  pad_coarse_to_fine_interleaved(&plan->props, &coarse_info, input_copy, &fine_info, out, 0);
+  halve_nyquist_components(parent, &coarse_info, input_copy);
+  pad_coarse_to_fine_interleaved(parent, &coarse_info, input_copy, &fine_info, out, 0);
   time_point_save(&plan->after_padding);
   backward_transform_c2c(plan, &fine_info, out);
   rs_free(input_copy);
@@ -403,10 +402,12 @@ static void pa_interpolate_execute_interleaved(const void *detail, fftw_complex 
 
 static void pa_interpolate_real(pa_plan plan, double *in, double *out)
 {
+  interpolate_plan parent = cast_to_plan(plan);
+
   block_info_t transformed_coarse_info, transformed_fine_info, fine_info;
-  get_block_info_real_recip_coarse(&plan->props, &transformed_coarse_info);
-  get_block_info_real_recip_fine(&plan->props, &transformed_fine_info);
-  get_block_info_fine(&plan->props, &fine_info);
+  get_block_info_real_recip_coarse(parent, &transformed_coarse_info);
+  get_block_info_real_recip_fine(parent, &transformed_fine_info);
+  get_block_info_fine(parent, &fine_info);
 
   const size_t transformed_size_coarse = num_elements_block(&transformed_coarse_info);
   const size_t transformed_size_fine = num_elements_block(&transformed_fine_info);
@@ -417,8 +418,8 @@ static void pa_interpolate_real(pa_plan plan, double *in, double *out)
   time_point_save(&plan->before_forward);
   fftw_execute_dft_r2c(plan->real_forward, in, scratch_coarse);
   time_point_save(&plan->after_forward);
-  halve_nyquist_components(&plan->props, &transformed_coarse_info, scratch_coarse);
-  pad_coarse_to_fine_interleaved(&plan->props, &transformed_coarse_info, scratch_coarse, &transformed_fine_info, scratch_fine, 1);
+  halve_nyquist_components(parent, &transformed_coarse_info, scratch_coarse);
+  pad_coarse_to_fine_interleaved(parent, &transformed_coarse_info, scratch_coarse, &transformed_fine_info, scratch_fine, 1);
   time_point_save(&plan->after_padding);
   backward_transform_c2r(plan, &transformed_fine_info, scratch_fine, &fine_info, out);
 
@@ -426,18 +427,18 @@ static void pa_interpolate_real(pa_plan plan, double *in, double *out)
   rs_free(scratch_fine);
 }
 
-static void pa_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout)
+static void pa_interpolate_execute_split(interpolate_plan parent, double *rin, double *iin, double *rout, double *iout)
 {
-  pa_plan plan = (pa_plan) detail;
-  assert(INTERPOLATE_SPLIT == plan->props.type || INTERPOLATE_SPLIT_PRODUCT == plan->props.type);
+  pa_plan plan = (pa_plan) parent;
+  assert(INTERPOLATE_SPLIT == parent->type || INTERPOLATE_SPLIT_PRODUCT == parent->type);
 
   time_point_save(&plan->before);
 
   if (plan->strategy == PACKED)
   {
     block_info_t coarse_info, fine_info;
-    get_block_info_coarse(&plan->props, &coarse_info);
-    get_block_info_fine(&plan->props, &fine_info);
+    get_block_info_coarse(parent, &coarse_info);
+    get_block_info_fine(parent, &fine_info);
     const size_t block_size = num_elements_block(&coarse_info);
 
     fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
@@ -447,8 +448,8 @@ static void pa_interpolate_execute_split(const void *detail, double *rin, double
     time_point_save(&plan->before_forward);
     fftw_execute_dft(plan->interleaved_forward, scratch_coarse, scratch_coarse);
     time_point_save(&plan->after_forward);
-    halve_nyquist_components(&plan->props, &coarse_info, scratch_coarse);
-    pad_coarse_to_fine_interleaved(&plan->props, &coarse_info, scratch_coarse, &fine_info, scratch_fine, 0);
+    halve_nyquist_components(parent, &coarse_info, scratch_coarse);
+    pad_coarse_to_fine_interleaved(parent, &coarse_info, scratch_coarse, &fine_info, scratch_fine, 0);
     time_point_save(&plan->after_padding);
     backward_transform_c2c(plan, &fine_info, scratch_fine);
     deinterleave_real(8 * block_size, (const double*) scratch_fine, rout, iout);
@@ -469,13 +470,13 @@ static void pa_interpolate_execute_split(const void *detail, double *rin, double
   time_point_save(&plan->after);
 }
 
-void pa_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out)
+void pa_interpolate_execute_split_product(interpolate_plan parent, double *rin, double *iin, double *out)
 {
-  pa_plan plan = (pa_plan) detail;
-  assert(INTERPOLATE_SPLIT_PRODUCT == plan->props.type);
+  pa_plan plan = (pa_plan) parent;
+  assert(INTERPOLATE_SPLIT_PRODUCT == parent->type);
   time_point_save(&plan->before);
 
-  const size_t block_size = num_elements(&plan->props);
+  const size_t block_size = num_elements(parent);
 
   if (plan->strategy == PACKED)
   {
@@ -483,7 +484,7 @@ void pa_interpolate_execute_split_product(const void *detail, double *rin, doubl
     fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
 
     interleave_real(block_size, (double*) scratch_coarse, rin, iin);
-    pa_interpolate_execute_interleaved(detail, scratch_coarse, scratch_fine);
+    pa_interpolate_execute_interleaved(parent, scratch_coarse, scratch_fine);
     complex_to_product(8 * block_size, scratch_fine, out);
 
     rs_free(scratch_coarse);
@@ -492,7 +493,7 @@ void pa_interpolate_execute_split_product(const void *detail, double *rin, doubl
   else if (plan->strategy == SEPARATE)
   {
     double *const scratch_fine = rs_alloc_real(8 * block_size);
-    pa_interpolate_execute_split(detail, rin, iin, out, scratch_fine);
+    pa_interpolate_execute_split(parent, rin, iin, out, scratch_fine);
     pointwise_multiply_real(8 * block_size, out, scratch_fine);
     rs_free(scratch_fine);
   }
@@ -500,9 +501,9 @@ void pa_interpolate_execute_split_product(const void *detail, double *rin, doubl
   time_point_save(&plan->after);
 }
 
-void pa_interpolate_print_timings(const void *detail)
+void pa_interpolate_print_timings(const interpolate_plan parent)
 {
-  pa_plan plan = (pa_plan) detail;
+  pa_plan plan = (pa_plan) parent;
   printf("Forward: %f\n", time_point_delta(&plan->before_forward, &plan->after_forward));
   printf("Padding: %f\n", time_point_delta(&plan->after_forward, &plan->after_padding));
   for(int dim = 0; dim < 3; ++dim)

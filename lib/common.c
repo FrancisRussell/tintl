@@ -27,19 +27,19 @@
 /// @param to_info size/stride details of target array.
 /// @param from source array.
 /// @param to target array.
-static void block_copy_coarse_to_fine_interleaved(interpolate_properties_t *props, size_t n0, size_t n1, size_t n2,
+static void block_copy_coarse_to_fine_interleaved(interpolate_plan plan, size_t n0, size_t n1, size_t n2,
     const block_info_t *from_info, const fftw_complex *from,
     const block_info_t *to_info, fftw_complex *to);
 
-void block_copy_coarse_to_fine_interleaved(interpolate_properties_t *props, size_t n0, size_t n1, size_t n2,
+void block_copy_coarse_to_fine_interleaved(interpolate_plan plan, size_t n0, size_t n1, size_t n2,
     const block_info_t *from_info, const fftw_complex *from,
     const block_info_t *to_info, fftw_complex *to)
 {
-  assert(n0 <= props->dims[0]);
-  assert(n1 <= props->dims[1]);
-  assert(n2 <= props->dims[2]);
+  assert(n0 <= plan->input_size.dims[0]);
+  assert(n1 <= plan->input_size.dims[1]);
+  assert(n2 <= plan->input_size.dims[2]);
 
-  const double scale_factor = 1.0 / num_elements(props);
+  const double scale_factor = 1.0 / num_elements(plan);
 
   for(size_t i2=0; i2 < n2; ++i2)
   {
@@ -59,16 +59,17 @@ void block_copy_coarse_to_fine_interleaved(interpolate_properties_t *props, size
 
 
 /// Populate an interpolate properties structure given the size of the interpolation.
-void populate_properties(interpolate_properties_t *props, interpolation_t type, size_t n0, size_t n1, size_t n2)
+void populate_properties(interpolate_plan plan, interpolation_t type, size_t n0, size_t n1, size_t n2)
 {
-  props->type = type;
-  props->dims[0] = n2;
-  props->dims[1] = n1;
-  props->dims[2] = n0;
+  plan->magic = interpolate_plan_magic_value;
+  plan->type = type;
+  plan->input_size.dims[0] = n2;
+  plan->input_size.dims[1] = n1;
+  plan->input_size.dims[2] = n0;
 
-  props->strides[0] = 1;
-  props->strides[1] = n2;
-  props->strides[2] = n2 * n1;
+  plan->input_size.strides[0] = 1;
+  plan->input_size.strides[1] = n2;
+  plan->input_size.strides[2] = n2 * n1;
 }
 
 /// Halve the magnitude of Nyquist components in a frequency domain
@@ -78,11 +79,11 @@ void populate_properties(interpolate_properties_t *props, interpolation_t type, 
 /// @param props interpolation properties.
 /// @param block_info block information of the frequency representation.
 /// @param coarse the data
-void halve_nyquist_components(interpolate_properties_t *props, block_info_t *block_info, fftw_complex *coarse)
+void halve_nyquist_components(interpolate_plan plan, block_info_t *block_info, fftw_complex *coarse)
 {
-  const size_t n2 = props->dims[2];
-  const size_t n1 = props->dims[1];
-  const size_t n0 = props->dims[0];
+  const size_t n2 = plan_input_size(plan, 2);
+  const size_t n1 = plan_input_size(plan, 1);
+  const size_t n0 = plan_input_size(plan, 0);
 
   const size_t d2 = block_info->dims[2];
   const size_t d1 = block_info->dims[1];
@@ -118,7 +119,7 @@ void halve_nyquist_components(interpolate_properties_t *props, block_info_t *blo
 /// @param to target array.
 /// @param positive_only if non-zero, do not copy negative frequency
 /// blocks in the contiguous dimension.
-void pad_coarse_to_fine_interleaved(interpolate_properties_t *props,
+void pad_coarse_to_fine_interleaved(interpolate_plan plan,
   const block_info_t *from_info, const fftw_complex *from,
   const block_info_t *to_info, fftw_complex *to,
   const int positive_only)
@@ -140,7 +141,7 @@ void pad_coarse_to_fine_interleaved(interpolate_properties_t *props,
 
         for(int dim = 0; dim < 3; ++dim)
         {
-          corner_sizes[dim] = corner_size(props->dims[dim], corner_flags[dim]);
+          corner_sizes[dim] = corner_size(plan_input_size(plan, dim), corner_flags[dim]);
           const int coarse_index = (corner_flags[dim] == 0) ? 0 : from_info->dims[dim] - corner_sizes[dim];
           const int fine_index = (corner_flags[dim] == 0) ? 0 : to_info->dims[dim] - corner_sizes[dim];
 
@@ -148,7 +149,7 @@ void pad_coarse_to_fine_interleaved(interpolate_properties_t *props,
           fine_block += to_info->strides[dim] * fine_index;
         }
 
-        block_copy_coarse_to_fine_interleaved(props, corner_sizes[0], corner_sizes[1], corner_sizes[2],
+        block_copy_coarse_to_fine_interleaved(plan, corner_sizes[0], corner_sizes[1], corner_sizes[2],
           from_info, coarse_block, to_info, fine_block);
       }
     }
@@ -232,10 +233,10 @@ void complex_to_product(const size_t size, const fftw_complex *in, double *out)
 }
 
 /// Time an interpolation plan for complex input data.
-double time_interpolate_interleaved(interpolate_plan plan, const int *dims)
+double time_interpolate_interleaved(interpolate_plan plan)
 {
   ticks before, after;
-  const size_t block_size = dims[0] * dims[1] * dims[2];
+  const size_t block_size = num_elements(plan);
   fftw_complex *const in = rs_alloc_complex(block_size);
   fftw_complex *const out = rs_alloc_complex(8 * block_size);
 
@@ -254,10 +255,10 @@ double time_interpolate_interleaved(interpolate_plan plan, const int *dims)
 
 
 /// Time an interpolation plan for split-format input data.
-double time_interpolate_split(interpolate_plan plan, const int *dims)
+double time_interpolate_split(interpolate_plan plan)
 {
   ticks before, after;
-  const size_t block_size = dims[0] * dims[1] * dims[2];
+  const size_t block_size = num_elements(plan);
   double *const in1 = rs_alloc_real(block_size);
   double *const in2 = rs_alloc_real(block_size);
   double *const out1 = rs_alloc_real(8 * block_size);
@@ -282,10 +283,10 @@ double time_interpolate_split(interpolate_plan plan, const int *dims)
 
 /// Time an interpolation for split-format data where the results are
 /// pointwise multiplied.
-double time_interpolate_split_product(interpolate_plan plan, const int *dims)
+double time_interpolate_split_product(interpolate_plan plan)
 {
   ticks before, after;
-  const size_t block_size = dims[0] * dims[1] * dims[2];
+  const size_t block_size = num_elements(plan);
   double *const in1 = rs_alloc_real(block_size);
   double *const in2 = rs_alloc_real(block_size);
   double *const out = rs_alloc_real(8 * block_size);
@@ -334,35 +335,35 @@ void populate_strides_unpadded(block_info_t *info)
   info->strides[2] = info->dims[0] * info->dims[1];
 }
 
-void get_block_info_coarse(const interpolate_properties_t *props, block_info_t *info)
+void get_block_info_coarse(const interpolate_plan plan, block_info_t *info)
 {
-  info->dims[0] = props->dims[0];
-  info->dims[1] = props->dims[1];
-  info->dims[2] = props->dims[2];
+  info->dims[0] = plan_input_size(plan, 0);
+  info->dims[1] = plan_input_size(plan, 1);
+  info->dims[2] = plan_input_size(plan, 2);
   populate_strides_unpadded(info);
 }
 
-void get_block_info_fine(const interpolate_properties_t *props, block_info_t *info)
+void get_block_info_fine(const interpolate_plan plan, block_info_t *info)
 {
-  info->dims[0] = props->dims[0] * 2;
-  info->dims[1] = props->dims[1] * 2;
-  info->dims[2] = props->dims[2] * 2;
+  info->dims[0] = plan_input_size(plan, 0) * 2;
+  info->dims[1] = plan_input_size(plan, 1) * 2;
+  info->dims[2] = plan_input_size(plan, 2) * 2;
   populate_strides_unpadded(info);
 }
 
-void get_block_info_real_recip_coarse(const interpolate_properties_t *props, block_info_t *info)
+void get_block_info_real_recip_coarse(const interpolate_plan plan, block_info_t *info)
 {
-  info->dims[0] = props->dims[0] / 2 + 1;
-  info->dims[1] = props->dims[1];
-  info->dims[2] = props->dims[2];
+  info->dims[0] = plan_input_size(plan, 0) / 2 + 1;
+  info->dims[1] = plan_input_size(plan, 1);
+  info->dims[2] = plan_input_size(plan, 2);
   populate_strides_unpadded(info);
 }
 
-void get_block_info_real_recip_fine(const interpolate_properties_t *props, block_info_t *info)
+void get_block_info_real_recip_fine(const interpolate_plan plan, block_info_t *info)
 {
-  info->dims[0] = props->dims[0] + 1;
-  info->dims[1] = props->dims[1] * 2;
-  info->dims[2] = props->dims[2] * 2;
+  info->dims[0] = plan_input_size(plan, 0) + 1;
+  info->dims[1] = plan_input_size(plan, 1) * 2;
+  info->dims[2] = plan_input_size(plan, 2) * 2;
   populate_strides_unpadded(info);
 }
 

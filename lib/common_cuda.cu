@@ -6,11 +6,11 @@
 #include <stdlib.h>
 #include <assert.h>
 
-__global__ void scale_z(interpolate_properties_t props, block_info_t block_info, cuDoubleComplex *coarse)
+__global__ void scale_z(block_info_t input_size, block_info_t block_info, cuDoubleComplex *coarse)
 {
   const size_t s2 = block_info.strides[2];
   const size_t s1 = block_info.strides[1];
-  const size_t n2 = props.dims[2];
+  const size_t n2 = input_size.dims[2];
 
   const size_t i1 = blockIdx.x;
   const size_t i0 = threadIdx.x;
@@ -20,11 +20,11 @@ __global__ void scale_z(interpolate_properties_t props, block_info_t block_info,
   *element = cuCmul(*element, scale);
 }
 
-__global__ void scale_y(interpolate_properties_t props, block_info_t block_info, cuDoubleComplex *coarse)
+__global__ void scale_y(block_info_t input_size, block_info_t block_info, cuDoubleComplex *coarse)
 {
   const size_t s2 = block_info.strides[2];
   const size_t s1 = block_info.strides[1];
-  const size_t n1 = props.dims[1];
+  const size_t n1 = input_size.dims[1];
 
   const size_t i2 = blockIdx.x;
   const size_t i0 = threadIdx.x;
@@ -33,11 +33,11 @@ __global__ void scale_y(interpolate_properties_t props, block_info_t block_info,
   cuDoubleComplex *element = &coarse[s2 * i2 +  s1 * (n1 / 2) + i0];
   *element = cuCmul(*element, scale);
 }
-__global__ void scale_x(interpolate_properties_t props, block_info_t block_info, cuDoubleComplex *coarse)
+__global__ void scale_x(block_info_t input_size, block_info_t block_info, cuDoubleComplex *coarse)
 {
   const size_t s2 = block_info.strides[2];
   const size_t s1 = block_info.strides[1];
-  const size_t n0 = props.dims[2];
+  const size_t n0 = input_size.dims[2];
 
   const size_t i2 = blockIdx.x;
   const size_t i1 = threadIdx.x;
@@ -47,24 +47,24 @@ __global__ void scale_x(interpolate_properties_t props, block_info_t block_info,
   *element = cuCmul(*element, scale);
 }
 
-void halve_nyquist_components_cuda(interpolate_properties_t *props, block_info_t *block_info, cuDoubleComplex *coarse)
+void halve_nyquist_components_cuda(interpolate_plan plan, block_info_t *block_info, cuDoubleComplex *coarse)
 {
-  const size_t n2 = props->dims[2];
-  const size_t n1 = props->dims[1];
-  const size_t n0 = props->dims[0];
+  const size_t n2 = plan_input_size(plan, 2);
+  const size_t n1 = plan_input_size(plan, 1);
+  const size_t n0 = plan_input_size(plan, 0);
 
   const size_t d2 = block_info->dims[2];
   const size_t d1 = block_info->dims[1];
   const size_t d0 = block_info->dims[0];
 
   if (n2 % 2 == 0)
-    scale_z<<<d1, d0>>>(*props, *block_info, (cuDoubleComplex*) coarse);
+    scale_z<<<d1, d0>>>(plan->input_size, *block_info, (cuDoubleComplex*) coarse);
 
   if (n1 % 2 == 0)
-    scale_y<<<d2, d1>>>(*props, *block_info, (cuDoubleComplex*) coarse);
+    scale_y<<<d2, d1>>>(plan->input_size, *block_info, (cuDoubleComplex*) coarse);
 
   if (n0 % 2 == 0)
-    scale_x<<<d2, d1>>>(*props, *block_info, (cuDoubleComplex*) coarse);
+    scale_x<<<d2, d1>>>(plan->input_size, *block_info, (cuDoubleComplex*) coarse);
 }
 
 __device__ int calculate_offset(const block_info_t *info, const int *indices)
@@ -127,12 +127,12 @@ __global__ void block_copy_coarse_to_fine_interleaved(
 }
 
 
-void pad_coarse_to_fine_interleaved_cuda(interpolate_properties_t *props,
+void pad_coarse_to_fine_interleaved_cuda(interpolate_plan plan,
   const block_info_t *from_info, const cuDoubleComplex *from,
   const block_info_t *to_info, cuDoubleComplex *to,
   const int positive_only)
 {
-  const double scale_factor = 1.0 / num_elements(props);
+  const double scale_factor = 1.0 / num_elements(plan);
   const size_t fine_size = num_elements_block(to_info);
   cudaMemset(to, 0, fine_size * sizeof(cuDoubleComplex));
 
@@ -150,7 +150,7 @@ void pad_coarse_to_fine_interleaved_cuda(interpolate_properties_t *props,
 
         for(int dim = 0; dim < 3; ++dim)
         {
-          corner_sizes[dim] = corner_size(props->dims[dim], corner_flags[dim]);
+          corner_sizes[dim] = corner_size(plan_input_size(plan, dim), corner_flags[dim]);
           const int coarse_index = (corner_flags[dim] == 0) ? 0 : from_info->dims[dim] - corner_sizes[dim];
           const int fine_index = (corner_flags[dim] == 0) ? 0 : to_info->dims[dim] - corner_sizes[dim];
 

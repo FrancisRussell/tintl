@@ -12,14 +12,14 @@ extern "C"
 #define CUDA_CHECK(err) printCudaDiagnostics( err, __FILE__, __LINE__)
 #define CUFFT_CHECK(err) printCuFFTDiagnostics( err, __FILE__, __LINE__)
 
-void halve_nyquist_components_cuda(interpolate_properties_t *props, block_info_t *block_info, cuDoubleComplex *coarse);
+void halve_nyquist_components_cuda(interpolate_plan plan, block_info_t *block_info, cuDoubleComplex *coarse);
 
-void pad_coarse_to_fine_interleaved_cuda(interpolate_properties_t *props,
+void pad_coarse_to_fine_interleaved_cuda(interpolate_plan plan,
   const block_info_t *from_info, const cuDoubleComplex *from,
   const block_info_t *to_info, cuDoubleComplex *to,
   const int positive_only);
 
-void transpose_block_cuda(const block_info_t *from_info, const cuDoubleComplex *from, block_info_t *to_info, 
+void transpose_block_cuda(const block_info_t *from_info, const cuDoubleComplex *from, block_info_t *to_info,
   cuDoubleComplex *to, int count);
 
 void printCudaDiagnostics(cudaError_t code, const char *file, int line);

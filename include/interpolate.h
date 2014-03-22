@@ -20,29 +20,6 @@ enum
   STATISTIC_LAST_COMMON_VALUE
 };
 
-/// Data structure common to all different interpolation implementations.
-///
-/// Implementations populate this struct with a pointer to
-/// implementation specific data and function pointers / that this data as
-/// a parameter.
-
-typedef struct
-{
-  /// Reference count
-  int ref_cnt;
-  /// Pointer to implementation-specific plan information
-  void *detail;
-
-  const char *(*get_name)(const void *detail);
-  void (*set_flags)(const void *detail, int flags);
-  void (*get_statistic_float)(const void *detail, int statistic, int index, stat_type_t *type, double *value);
-  void (*execute_interleaved)(const void *detail, rs_complex *in, rs_complex *out);
-  void (*execute_split)(const void *detail, double *rin, double *iin, double *rout, double *iout);
-  void (*execute_split_product)(const void *detail, double *rin, double *iin, double *out);
-  void (*print_timings)(const void *detail);
-  void (*destroy_detail)(void* detail);
-} interpolate_plan_s;
-
 enum
 {
   PREFER_PACKED_LAYOUT = 1,
@@ -50,7 +27,8 @@ enum
 };
 
 /// Typedef for client use.
-typedef interpolate_plan_s *interpolate_plan;
+struct interpolate_plan_s;
+typedef struct interpolate_plan_s *interpolate_plan;
 
 /// Returns name of a plan
 const char *interpolate_get_name(const interpolate_plan plan);

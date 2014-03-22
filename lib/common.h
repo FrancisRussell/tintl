@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <forward.h>
 #include <interpolate.h>
+#include <assert.h>
 
 #ifdef __CUDACC__
 #undef __SSE2__
@@ -18,6 +19,8 @@
 extern "C"
 {
 #endif
+
+static unsigned interpolate_plan_magic_value = 0x1e7f21e2;
 
 enum
 {
@@ -33,20 +36,42 @@ typedef enum
   INTERPOLATE_SPLIT_PRODUCT
 } interpolation_t;
 
-/// Describes an interpolation.
-typedef struct
-{
-  int type;
-  int dims[3];
-  int strides[3];
-} interpolate_properties_t;
-
 /// Describes the dimensions and padding of a 3D block of data.
 typedef struct
 {
   int dims[3];
   int strides[3];
 } block_info_t;
+
+/// Data structure common to all different interpolation implementations.
+///
+/// Implementations populate this struct with a pointer to
+/// implementation specific data and function pointers / that this data as
+/// a parameter.
+
+struct interpolate_plan_s
+{
+  /// Magic value
+  unsigned magic;
+
+  /// Type of interpolation
+  interpolation_t type;
+
+  /// Transform dimensions
+  block_info_t input_size;
+
+  /// Reference count
+  int ref_cnt;
+
+  const char *(*get_name)(const interpolate_plan plan);
+  void (*set_flags)(interpolate_plan plan, int flags);
+  void (*get_statistic_float)(const interpolate_plan plan, int statistic, int index, stat_type_t *type, double *value);
+  void (*execute_interleaved)(interpolate_plan plan, rs_complex *in, rs_complex *out);
+  void (*execute_split)(interpolate_plan plan, double *rin, double *iin, double *rout, double *iout);
+  void (*execute_split_product)(interpolate_plan plan, double *rin, double *iin, double *out);
+  void (*print_timings)(const interpolate_plan plan);
+  void (*destroy_detail)(interpolate_plan plan);
+};
 
 static void pointwise_multiply_complex(size_t size, rs_complex *a, const rs_complex *b);
 static void pointwise_multiply_real(size_t size, double *a, const double *b);
@@ -56,23 +81,23 @@ void interleave_real(size_t size, double *out, const double *even, const double 
 void complex_to_product(const size_t size, const rs_complex *in, double *out);
 
 void populate_strides_unpadded(block_info_t *info);
-void get_block_info_coarse(const interpolate_properties_t *props, block_info_t *info);
-void get_block_info_fine(const interpolate_properties_t *props, block_info_t *info);
-void get_block_info_real_recip_coarse(const interpolate_properties_t *props, block_info_t *info);
-void get_block_info_real_recip_fine(const interpolate_properties_t *props, block_info_t *info);
+void get_block_info_coarse(const interpolate_plan plan, block_info_t *info);
+void get_block_info_fine(const interpolate_plan plan, block_info_t *info);
+void get_block_info_real_recip_coarse(const interpolate_plan plan, block_info_t *info);
+void get_block_info_real_recip_fine(const interpolate_plan plan, block_info_t *info);
 
-void populate_properties(interpolate_properties_t *props, interpolation_t type, size_t n0, size_t n1, size_t n2);
-void pad_coarse_to_fine_interleaved(interpolate_properties_t *props,
+void populate_properties(interpolate_plan plan, interpolation_t type, size_t n0, size_t n1, size_t n2);
+void pad_coarse_to_fine_interleaved(interpolate_plan plan,
   const block_info_t *from_info, const rs_complex *from,
   const block_info_t *to_info, rs_complex *to,
   int positive_only);
 void copy_real(const block_info_t *from_info, const double *from,
   const block_info_t *to_info, double *to);
-void halve_nyquist_components(interpolate_properties_t *props, block_info_t *block_info, rs_complex *coarse);
+void halve_nyquist_components(interpolate_plan plan, block_info_t *block_info, rs_complex *coarse);
 
-double time_interpolate_interleaved(interpolate_plan plan, const int *dims);
-double time_interpolate_split(interpolate_plan plan, const int *dims);
-double time_interpolate_split_product(interpolate_plan plan, const int *dims);
+double time_interpolate_interleaved(interpolate_plan plan);
+double time_interpolate_split(interpolate_plan plan);
+double time_interpolate_split_product(interpolate_plan plan);
 
 void setup_threading(void);
 
@@ -131,20 +156,37 @@ static inline void pointwise_multiply_real(size_t size, double *a, const double 
     a[i] *= b[i];
 }
 
-static inline size_t num_elements(interpolate_properties_t *props)
-{
-  return props->dims[0] * props->dims[1] * props->dims[2];
-}
-
 static inline size_t num_elements_block(const block_info_t *block_info)
 {
   return block_info->dims[0] * block_info->dims[1] * block_info->dims[2];
+}
+
+static inline void validate_plan(const interpolate_plan plan)
+{
+  assert(plan->magic == interpolate_plan_magic_value && "Corrupt or invalid plan detected.");
+}
+
+static interpolate_plan cast_to_plan(void *vplan)
+{
+  interpolate_plan plan = (interpolate_plan) vplan;
+  validate_plan(plan);
+  return plan;
+}
+
+static inline size_t num_elements(interpolate_plan plan)
+{
+  return num_elements_block(&plan->input_size);
 }
 
 static inline size_t corner_size(const size_t n, const int negative)
 {
   // In the even case, this will duplicate the Nyquist in both blocks
   return n / 2 + (negative == 0);
+}
+
+static inline size_t plan_input_size(interpolate_plan plan, int dim)
+{
+  return plan->input_size.dims[dim];
 }
 
 #ifdef __cplusplus

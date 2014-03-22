@@ -24,7 +24,7 @@ typedef enum
 /// Implementation-specific structure for naive interpolation plans.
 typedef struct
 {
-  interpolate_properties_t props;
+  struct interpolate_plan_s common;
   strategy_t strategy;
 
   cufftHandle interleaved_forward;
@@ -46,18 +46,18 @@ static interpolate_plan allocate_plan(void);
 /* Interface functions */
 
 
-static const char *get_name(const void *detail);
-static void naive_interpolate_execute_interleaved(const void *detail, rs_complex *in, rs_complex *out);
-static void naive_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout);
-static void naive_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out);
-static void naive_interpolate_print_timings(const void *detail);
-static void naive_interpolate_destroy_detail(void *detail);
-static void naive_set_flags(const void *detail, const int flags);
-static void naive_get_statistic_float(const void *detail, int statistic, int index, stat_type_t *type, double *result);
+static const char *get_name(const interpolate_plan plan);
+static void naive_interpolate_execute_interleaved(interpolate_plan plan, rs_complex *in, rs_complex *out);
+static void naive_interpolate_execute_split(interpolate_plan plan, double *rin, double *iin, double *rout, double *iout);
+static void naive_interpolate_execute_split_product(interpolate_plan plan, double *rin, double *iin, double *out);
+static void naive_interpolate_print_timings(const interpolate_plan plan);
+static void naive_interpolate_destroy_detail(interpolate_plan plan);
+static void naive_set_flags(interpolate_plan plan, const int flags);
+static void naive_get_statistic_float(const interpolate_plan plan, int statistic, int index, stat_type_t *type, double *result);
 
 static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, int n2, int flags);
 
-static const char *get_name(const void *detail)
+static const char *get_name(const interpolate_plan plan)
 {
   return "naive-cuda";
 }
@@ -66,13 +66,10 @@ static interpolate_plan allocate_plan(void)
 {
   setup_threading();
 
-  interpolate_plan holder = (interpolate_plan) malloc(sizeof(interpolate_plan_s));
+  interpolate_plan holder = (interpolate_plan) malloc(sizeof(naive_plan_s));
   assert(holder != NULL);
 
   holder->ref_cnt = 1;
-
-  holder->detail = malloc(sizeof(naive_plan_s));
-  assert(holder->detail != NULL);
 
   holder->get_name = get_name;
   holder->set_flags = naive_set_flags;
@@ -86,9 +83,9 @@ static interpolate_plan allocate_plan(void)
   return holder;
 }
 
-static void naive_set_flags(const void *detail, const int flags)
+static void naive_set_flags(interpolate_plan parent, const int flags)
 {
-  naive_plan plan = (naive_plan) detail;
+  naive_plan plan = (naive_plan) parent;
 
   const int conflicting_layouts = PREFER_PACKED_LAYOUT | PREFER_SPLIT_LAYOUT;
   assert((flags & conflicting_layouts) != conflicting_layouts);
@@ -100,9 +97,9 @@ static void naive_set_flags(const void *detail, const int flags)
     plan->strategy = SEPARATE;
 }
 
-static void naive_get_statistic_float(const void *detail, int statistic, int index, stat_type_t *type, double *result)
+static void naive_get_statistic_float(const interpolate_plan parent, int statistic, int index, stat_type_t *type, double *result)
 {
-  naive_plan plan = (naive_plan) detail;
+  naive_plan plan = (naive_plan) parent;
 
   switch(statistic)
   {
@@ -118,11 +115,12 @@ static void naive_get_statistic_float(const void *detail, int statistic, int ind
 
 static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)
 {
-  populate_properties(&plan->props, type, n0, n1, n2);
+  populate_properties((interpolate_plan) plan, type, n0, n1, n2);
+  interpolate_plan parent = cast_to_plan(plan);
 
   block_info_t coarse_info, fine_info;
-  get_block_info_coarse(&plan->props, &coarse_info);
-  get_block_info_fine(&plan->props, &fine_info);
+  get_block_info_coarse(parent, &coarse_info);
+  get_block_info_fine(parent, &fine_info);
 
   int rev_dims[] = { coarse_info.dims[2], coarse_info.dims[1], coarse_info.dims[0] };
   int rev_fine_dims[] = { fine_info.dims[2], fine_info.dims[1], fine_info.dims[0] };
@@ -136,7 +134,7 @@ static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, i
 interpolate_plan interpolate_plan_3d_naive_cuda_interleaved(int n0, int n1, int n2, int flags)
 {
   interpolate_plan wrapper = allocate_plan();
-  naive_plan plan = (naive_plan) wrapper->detail;
+  naive_plan plan = (naive_plan) wrapper;
 
   plan_common(plan, INTERPOLATE_INTERLEAVED, n0, n1, n2, flags);
   plan->strategy = PACKED;
@@ -146,16 +144,16 @@ interpolate_plan interpolate_plan_3d_naive_cuda_interleaved(int n0, int n1, int 
 
 interpolate_plan interpolate_plan_3d_naive_cuda_split(int n0, int n1, int n2, int flags)
 {
-  interpolate_plan wrapper = allocate_plan();
-  naive_plan plan = (naive_plan) wrapper->detail;
+  interpolate_plan parent = allocate_plan();
+  naive_plan plan = (naive_plan) parent;
 
   plan_common(plan, INTERPOLATE_SPLIT, n0, n1, n2, flags);
 
   block_info_t coarse_info, fine_info, transformed_coarse_info, transformed_fine_info;
-  get_block_info_coarse(&plan->props, &coarse_info);
-  get_block_info_fine(&plan->props, &fine_info);
-  get_block_info_real_recip_coarse(&plan->props, &transformed_coarse_info);
-  get_block_info_real_recip_fine(&plan->props, &transformed_fine_info);
+  get_block_info_coarse(parent, &coarse_info);
+  get_block_info_fine(parent, &fine_info);
+  get_block_info_real_recip_coarse(parent, &transformed_coarse_info);
+  get_block_info_real_recip_fine(parent, &transformed_fine_info);
 
   const size_t block_size = num_elements_block(&coarse_info);
   const size_t transformed_size_coarse = num_elements_block(&transformed_coarse_info);
@@ -168,33 +166,33 @@ interpolate_plan interpolate_plan_3d_naive_cuda_split(int n0, int n1, int n2, in
   CUFFT_CHECK(cufftPlanMany(&plan->real_backward, 3, rev_fine_dims, NULL, 1, 0, NULL, 1, 0, CUFFT_Z2D, 1));
 
   plan->strategy = SEPARATE;
-  const double separate_time = time_interpolate_split(wrapper, plan->props.dims);
+  const double separate_time = time_interpolate_split(parent);
   plan->strategy = PACKED;
-  const double packed_time = time_interpolate_split(wrapper, plan->props.dims);
+  const double packed_time = time_interpolate_split(parent);
   plan->strategy = (separate_time < packed_time) ? SEPARATE : PACKED;
 
   plan->has_real_plans = 1;
 
-  return wrapper;
+  return parent;
 }
 
 interpolate_plan interpolate_plan_3d_naive_cuda_product(int n0, int n1, int n2, int flags)
 {
-  interpolate_plan wrapper = interpolate_plan_3d_naive_cuda_split(n0, n1, n2, flags);
-  naive_plan plan = (naive_plan) wrapper->detail;
-  plan->props.type = INTERPOLATE_SPLIT_PRODUCT;
+  interpolate_plan parent = interpolate_plan_3d_naive_cuda_split(n0, n1, n2, flags);
+  parent->type = INTERPOLATE_SPLIT_PRODUCT;
+  naive_plan plan = (naive_plan) parent;
 
   plan->strategy = SEPARATE;
-  const double separate_time = time_interpolate_split_product(wrapper, plan->props.dims);
+  const double separate_time = time_interpolate_split_product(parent);
   plan->strategy = PACKED;
-  const double packed_time = time_interpolate_split_product(wrapper, plan->props.dims);
+  const double packed_time = time_interpolate_split_product(parent);
   plan->strategy = (separate_time < packed_time) ? SEPARATE : PACKED;
-  return wrapper;
+  return parent;
 }
 
-static void naive_interpolate_destroy_detail(void *detail)
+static void naive_interpolate_destroy_detail(interpolate_plan parent)
 {
-  naive_plan plan = (naive_plan) detail;
+  naive_plan plan = (naive_plan) parent;
 
   cufftDestroy(plan->interleaved_forward);
   cufftDestroy(plan->interleaved_backward);
@@ -204,18 +202,16 @@ static void naive_interpolate_destroy_detail(void *detail)
     cufftDestroy(plan->real_forward);
     cufftDestroy(plan->real_backward);
   }
-
-  free(plan);
 }
 
-static void naive_interpolate_execute_interleaved(const void *detail, rs_complex *in, rs_complex *out)
+static void naive_interpolate_execute_interleaved(interpolate_plan parent, rs_complex *in, rs_complex *out)
 {
-  naive_plan plan = (naive_plan) detail;
+  naive_plan plan = (naive_plan) parent;
   assert(plan->strategy == PACKED);
 
   block_info_t coarse_info, fine_info;
-  get_block_info_coarse(&plan->props, &coarse_info);
-  get_block_info_fine(&plan->props, &fine_info);
+  get_block_info_coarse(parent, &coarse_info);
+  get_block_info_fine(parent, &fine_info);
   const size_t block_size = num_elements_block(&coarse_info);
 
   thrust::device_vector<cuDoubleComplex> dev_in(block_size);
@@ -229,8 +225,8 @@ static void naive_interpolate_execute_interleaved(const void *detail, rs_complex
 
   CUFFT_CHECK(cufftExecZ2Z(plan->interleaved_forward, thrust::raw_pointer_cast(&dev_in[0]), thrust::raw_pointer_cast(&dev_in[0]), CUFFT_FORWARD));
 
-  halve_nyquist_components_cuda(&plan->props, &coarse_info, thrust::raw_pointer_cast(&dev_in[0]));
-  pad_coarse_to_fine_interleaved_cuda(&plan->props, 
+  halve_nyquist_components_cuda(parent, &coarse_info, thrust::raw_pointer_cast(&dev_in[0]));
+  pad_coarse_to_fine_interleaved_cuda(parent, 
     &coarse_info, thrust::raw_pointer_cast(&dev_in[0]), &fine_info, thrust::raw_pointer_cast(&dev_out[0]), 0);
 
   CUFFT_CHECK(cufftExecZ2Z(plan->interleaved_backward, 
@@ -248,9 +244,10 @@ static void naive_interpolate_execute_interleaved(const void *detail, rs_complex
 static void naive_interpolate_real(naive_plan plan, double *in, const thrust::device_ptr<double>& dev_out)
 {
   block_info_t coarse_info, transformed_coarse_info, transformed_fine_info;
-  get_block_info_coarse(&plan->props, &coarse_info);
-  get_block_info_real_recip_coarse(&plan->props, &transformed_coarse_info);
-  get_block_info_real_recip_fine(&plan->props, &transformed_fine_info);
+  interpolate_plan parent = cast_to_plan(plan);
+  get_block_info_coarse(parent, &coarse_info);
+  get_block_info_real_recip_coarse(parent, &transformed_coarse_info);
+  get_block_info_real_recip_fine(parent, &transformed_fine_info);
 
   const size_t block_size = num_elements_block(&coarse_info);
   const size_t transformed_size_coarse = num_elements_block(&transformed_coarse_info);
@@ -266,32 +263,32 @@ static void naive_interpolate_real(naive_plan plan, double *in, const thrust::de
 
   CUFFT_CHECK(cufftExecD2Z(plan->real_forward, thrust::raw_pointer_cast(&dev_in[0]), thrust::raw_pointer_cast(&scratch_coarse[0])));
 
-  halve_nyquist_components_cuda(&plan->props, &transformed_coarse_info, thrust::raw_pointer_cast(&scratch_coarse[0]));
-  pad_coarse_to_fine_interleaved_cuda(&plan->props, 
+  halve_nyquist_components_cuda(parent, &transformed_coarse_info, thrust::raw_pointer_cast(&scratch_coarse[0]));
+  pad_coarse_to_fine_interleaved_cuda(parent, 
     &transformed_coarse_info, thrust::raw_pointer_cast(&scratch_coarse[0]), &transformed_fine_info, thrust::raw_pointer_cast(&scratch_fine[0]), 1);
 
   CUFFT_CHECK(cufftExecZ2D(plan->real_backward, thrust::raw_pointer_cast(&scratch_fine[0]), thrust::raw_pointer_cast(dev_out)));
 }
 
-static void naive_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout)
+static void naive_interpolate_execute_split(interpolate_plan parent, double *rin, double *iin, double *rout, double *iout)
 {
-  naive_plan plan = (naive_plan) detail;
-  assert(INTERPOLATE_SPLIT == plan->props.type || INTERPOLATE_SPLIT_PRODUCT == plan->props.type);
+  naive_plan plan = (naive_plan) parent;
+  assert(INTERPOLATE_SPLIT == parent->type || INTERPOLATE_SPLIT_PRODUCT == parent->type);
 
   time_point_save(&plan->before);
 
   if (plan->strategy == PACKED)
   {
     block_info_t coarse_info, fine_info;
-    get_block_info_coarse(&plan->props, &coarse_info);
-    get_block_info_fine(&plan->props, &fine_info);
+    get_block_info_coarse(parent, &coarse_info);
+    get_block_info_fine(parent, &fine_info);
     const size_t block_size = num_elements_block(&coarse_info);
 
     rs_complex *const scratch_coarse = rs_alloc_complex(block_size);
     rs_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
 
     interleave_real(block_size, (double*) scratch_coarse, rin, iin);
-    naive_interpolate_execute_interleaved(detail, scratch_coarse, scratch_fine);
+    naive_interpolate_execute_interleaved(parent, scratch_coarse, scratch_fine);
     deinterleave_real(8 * block_size, (const double*) scratch_fine, rout, iout);
 
     rs_free(scratch_fine);
@@ -300,7 +297,7 @@ static void naive_interpolate_execute_split(const void *detail, double *rin, dou
   else if (plan->strategy == SEPARATE)
   {
     block_info_t coarse_info;
-    get_block_info_coarse(&plan->props, &coarse_info);
+    get_block_info_coarse(parent, &coarse_info);
     const size_t block_size = num_elements_block(&coarse_info);
 
     CUDA_CHECK(cudaHostRegister(rout, sizeof(double) * block_size * 8, 0));
@@ -327,11 +324,11 @@ static void naive_interpolate_execute_split(const void *detail, double *rin, dou
   time_point_save(&plan->after);
 }
 
-void naive_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out)
+void naive_interpolate_execute_split_product(interpolate_plan parent, double *rin, double *iin, double *out)
 {
-  naive_plan plan = (naive_plan) detail;
-  assert(INTERPOLATE_SPLIT_PRODUCT == plan->props.type);
-  const size_t block_size = num_elements(&plan->props);
+  naive_plan plan = (naive_plan) parent;
+  assert(INTERPOLATE_SPLIT_PRODUCT == parent->type);
+  const size_t block_size = num_elements(parent);
 
   time_point_save(&plan->before);
 
@@ -341,7 +338,7 @@ void naive_interpolate_execute_split_product(const void *detail, double *rin, do
     rs_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
 
     interleave_real(block_size, (double*) scratch_coarse, rin, iin);
-    naive_interpolate_execute_interleaved(detail, scratch_coarse, scratch_fine);
+    naive_interpolate_execute_interleaved(parent, scratch_coarse, scratch_fine);
     complex_to_product(8 * block_size, scratch_fine, out);
 
     rs_free(scratch_coarse);
@@ -350,7 +347,7 @@ void naive_interpolate_execute_split_product(const void *detail, double *rin, do
   if (plan->strategy == SEPARATE)
   {
     block_info_t coarse_info;
-    get_block_info_coarse(&plan->props, &coarse_info);
+    get_block_info_coarse(parent, &coarse_info);
     const size_t block_size = num_elements_block(&coarse_info);
 
     CUDA_CHECK(cudaHostRegister(rin, sizeof(double) * block_size, 0));
@@ -381,9 +378,9 @@ void naive_interpolate_execute_split_product(const void *detail, double *rin, do
   time_point_save(&plan->after);
 }
 
-void naive_interpolate_print_timings(const void *detail)
+void naive_interpolate_print_timings(const interpolate_plan parent)
 {
-  naive_plan plan = (naive_plan) detail;
+  naive_plan plan = (naive_plan) parent;
   printf("Interpolation: %f\n", time_point_delta(&plan->before, &plan->after));
 }
 

@@ -22,7 +22,7 @@ typedef enum
 /// Implementation-specific structure for naive interpolation plans.
 typedef struct
 {
-  interpolate_properties_t props;
+  struct interpolate_plan_s common;
   strategy_t strategy;
 
   fftw_plan interleaved_forward;
@@ -45,18 +45,18 @@ typedef naive_plan_s *naive_plan;
 static interpolate_plan allocate_plan(void);
 
 /* Interface functions */
-static const char *get_name(const void *detail);
-static void naive_set_flags(const void *detail, int flags);
-static void naive_get_statistic_float(const void *detail, int statistic, int index, stat_type_t *type, double *result);
-static void naive_interpolate_execute_interleaved(const void *detail, fftw_complex *in, fftw_complex *out);
-static void naive_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout);
-static void naive_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out);
-static void naive_interpolate_print_timings(const void *detail);
-static void naive_interpolate_destroy_detail(void *detail);
+static const char *get_name(const interpolate_plan plan);
+static void naive_set_flags(interpolate_plan plan, int flags);
+static void naive_get_statistic_float(const interpolate_plan plan, int statistic, int index, stat_type_t *type, double *result);
+static void naive_interpolate_execute_interleaved(interpolate_plan plan, fftw_complex *in, fftw_complex *out);
+static void naive_interpolate_execute_split(interpolate_plan plan, double *rin, double *iin, double *rout, double *iout);
+static void naive_interpolate_execute_split_product(interpolate_plan plan, double *rin, double *iin, double *out);
+static void naive_interpolate_print_timings(const interpolate_plan plan);
+static void naive_interpolate_destroy_detail(interpolate_plan plan);
 
 static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, int n2, int flags);
 
-static const char *get_name(const void *detail)
+static const char *get_name(const interpolate_plan plan)
 {
   return "naive";
 }
@@ -65,13 +65,10 @@ static interpolate_plan allocate_plan(void)
 {
   setup_threading();
 
-  interpolate_plan holder = malloc(sizeof(interpolate_plan_s));
+  interpolate_plan holder = malloc(sizeof(naive_plan_s));
   assert(holder != NULL);
 
   holder->ref_cnt = 1;
-
-  holder->detail = malloc(sizeof(naive_plan_s));
-  assert(holder->detail != NULL);
 
   holder->get_name = get_name;
   holder->set_flags = naive_set_flags;
@@ -87,16 +84,17 @@ static interpolate_plan allocate_plan(void)
 
 static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)
 {
-  populate_properties(&plan->props, type, n0, n1, n2);
+  populate_properties((interpolate_plan) plan, type, n0, n1, n2);
 
-  const size_t block_size = num_elements(&plan->props);
+  interpolate_plan parent = cast_to_plan(plan);
+  const size_t block_size = num_elements(parent);
 
   fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
   fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
 
   block_info_t coarse_info, fine_info;
-  get_block_info_coarse(&plan->props, &coarse_info);
-  get_block_info_fine(&plan->props, &fine_info);
+  get_block_info_coarse(parent, &coarse_info);
+  get_block_info_fine(parent, &fine_info);
 
   int rev_dims[] = { coarse_info.dims[2], coarse_info.dims[1], coarse_info.dims[0] };
   int rev_fine_dims[] = { fine_info.dims[2], fine_info.dims[1], fine_info.dims[0] };
@@ -114,9 +112,9 @@ static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, i
   rs_free(scratch_fine);
 }
 
-static void naive_set_flags(const void *detail, const int flags)
+static void naive_set_flags(interpolate_plan parent, const int flags)
 {
-  naive_plan plan = (naive_plan) detail;
+  naive_plan plan = (naive_plan) parent;
 
   const int conflicting_layouts = PREFER_PACKED_LAYOUT | PREFER_SPLIT_LAYOUT;
   assert((flags & conflicting_layouts) != conflicting_layouts);
@@ -128,9 +126,9 @@ static void naive_set_flags(const void *detail, const int flags)
     plan->strategy = SEPARATE;
 }
 
-static void naive_get_statistic_float(const void *detail, int statistic, int index, stat_type_t *type, double *result)
+static void naive_get_statistic_float(const interpolate_plan parent, int statistic, int index, stat_type_t *type, double *result)
 {
-  naive_plan plan = (naive_plan) detail;
+  naive_plan plan = (naive_plan) parent;
 
   switch(statistic)
   {
@@ -146,29 +144,29 @@ static void naive_get_statistic_float(const void *detail, int statistic, int ind
 
 interpolate_plan interpolate_plan_3d_naive_interleaved(int n0, int n1, int n2, int flags)
 {
-  interpolate_plan wrapper = allocate_plan();
-  naive_plan plan = (naive_plan) wrapper->detail;
+  interpolate_plan parent = allocate_plan();
+  naive_plan plan = (naive_plan) parent;
 
   flags |= FFTW_MEASURE;
   plan_common(plan, INTERPOLATE_INTERLEAVED, n0, n1, n2, flags);
   plan->strategy = PACKED;
 
-  return wrapper;
+  return parent;
 }
 
 interpolate_plan interpolate_plan_3d_naive_split(int n0, int n1, int n2, int flags)
 {
-  interpolate_plan wrapper = allocate_plan();
-  naive_plan plan = (naive_plan) wrapper->detail;
+  interpolate_plan parent = allocate_plan();
+  naive_plan plan = (naive_plan) parent;
 
   flags |= FFTW_MEASURE;
   plan_common(plan, INTERPOLATE_SPLIT, n0, n1, n2, flags);
 
   block_info_t coarse_info, fine_info, transformed_coarse_info, transformed_fine_info;
-  get_block_info_coarse(&plan->props, &coarse_info);
-  get_block_info_fine(&plan->props, &fine_info);
-  get_block_info_real_recip_coarse(&plan->props, &transformed_coarse_info);
-  get_block_info_real_recip_fine(&plan->props, &transformed_fine_info);
+  get_block_info_coarse(parent, &coarse_info);
+  get_block_info_fine(parent, &fine_info);
+  get_block_info_real_recip_coarse(parent, &transformed_coarse_info);
+  get_block_info_real_recip_fine(parent, &transformed_fine_info);
 
   const size_t block_size = num_elements_block(&coarse_info);
   const size_t transformed_size_coarse = num_elements_block(&transformed_coarse_info);
@@ -195,51 +193,49 @@ interpolate_plan interpolate_plan_3d_naive_split(int n0, int n1, int n2, int fla
   rs_free(scratch_fine_complex);
 
   plan->strategy = SEPARATE;
-  const double separate_time = time_interpolate_split(wrapper, plan->props.dims);
+  const double separate_time = time_interpolate_split(parent);
   plan->strategy = PACKED;
-  const double packed_time = time_interpolate_split(wrapper, plan->props.dims);
+  const double packed_time = time_interpolate_split(parent);
   plan->strategy = (separate_time < packed_time) ? SEPARATE : PACKED;
 
-  return wrapper;
+  return parent;
 }
 
 interpolate_plan interpolate_plan_3d_naive_product(int n0, int n1, int n2, int flags)
 {
-  interpolate_plan wrapper = interpolate_plan_3d_naive_split(n0, n1, n2, flags);
-  naive_plan plan = (naive_plan) wrapper->detail;
-  plan->props.type = INTERPOLATE_SPLIT_PRODUCT;
+  interpolate_plan parent = interpolate_plan_3d_naive_split(n0, n1, n2, flags);
+  parent->type = INTERPOLATE_SPLIT_PRODUCT;
+  naive_plan plan = (naive_plan) parent;
 
   plan->strategy = SEPARATE;
-  const double separate_time = time_interpolate_split_product(wrapper, plan->props.dims);
+  const double separate_time = time_interpolate_split_product(parent);
   plan->strategy = PACKED;
-  const double packed_time = time_interpolate_split_product(wrapper, plan->props.dims);
+  const double packed_time = time_interpolate_split_product(parent);
   plan->strategy = (separate_time < packed_time) ? SEPARATE : PACKED;
-  return wrapper;
+  return parent;
 }
 
-static void naive_interpolate_destroy_detail(void *detail)
+static void naive_interpolate_destroy_detail(interpolate_plan parent)
 {
-  naive_plan plan = (naive_plan) detail;
+  naive_plan plan = (naive_plan) parent;
 
   fftw_destroy_plan(plan->interleaved_forward);
   fftw_destroy_plan(plan->interleaved_backward);
 
   fftw_destroy_plan_maybe_null(plan->real_forward);
   fftw_destroy_plan_maybe_null(plan->real_backward);
-
-  free(plan);
 }
 
-static void naive_interpolate_execute_interleaved(const void *detail, fftw_complex *in, fftw_complex *out)
+static void naive_interpolate_execute_interleaved(interpolate_plan parent, fftw_complex *in, fftw_complex *out)
 {
-  naive_plan plan = (naive_plan) detail;
+  naive_plan plan = (naive_plan) parent;
   assert(plan->strategy == PACKED);
 
   time_point_save(&plan->before);
 
   block_info_t coarse_info, fine_info;
-  get_block_info_coarse(&plan->props, &coarse_info);
-  get_block_info_fine(&plan->props, &fine_info);
+  get_block_info_coarse(parent, &coarse_info);
+  get_block_info_fine(parent, &fine_info);
 
   const size_t block_size = num_elements_block(&coarse_info);
   fftw_complex *const input_copy = rs_alloc_complex(block_size);
@@ -248,8 +244,8 @@ static void naive_interpolate_execute_interleaved(const void *detail, fftw_compl
   time_point_save(&plan->before_forward);
   fftw_execute_dft(plan->interleaved_forward, input_copy, input_copy);
   time_point_save(&plan->after_forward);
-  halve_nyquist_components(&plan->props, &coarse_info, input_copy);
-  pad_coarse_to_fine_interleaved(&plan->props, &coarse_info, input_copy, &fine_info, out, 0);
+  halve_nyquist_components(parent, &coarse_info, input_copy);
+  pad_coarse_to_fine_interleaved(parent, &coarse_info, input_copy, &fine_info, out, 0);
   time_point_save(&plan->after_padding);
   fftw_execute_dft(plan->interleaved_backward, out, out);
   time_point_save(&plan->after_backward);
@@ -261,10 +257,12 @@ static void naive_interpolate_execute_interleaved(const void *detail, fftw_compl
 
 static void naive_interpolate_real(naive_plan plan, double *in, double *out)
 {
+  interpolate_plan parent = cast_to_plan(plan);
+
   block_info_t coarse_info, transformed_coarse_info, transformed_fine_info;
-  get_block_info_coarse(&plan->props, &coarse_info);
-  get_block_info_real_recip_coarse(&plan->props, &transformed_coarse_info);
-  get_block_info_real_recip_fine(&plan->props, &transformed_fine_info);
+  get_block_info_coarse(parent, &coarse_info);
+  get_block_info_real_recip_coarse(parent, &transformed_coarse_info);
+  get_block_info_real_recip_fine(parent, &transformed_fine_info);
 
   const size_t transformed_size_coarse = num_elements_block(&transformed_coarse_info);
   const size_t transformed_size_fine = num_elements_block(&transformed_fine_info);
@@ -275,8 +273,8 @@ static void naive_interpolate_real(naive_plan plan, double *in, double *out)
   time_point_save(&plan->before_forward);
   fftw_execute_dft_r2c(plan->real_forward, in, scratch_coarse);
   time_point_save(&plan->after_forward);
-  halve_nyquist_components(&plan->props, &transformed_coarse_info, scratch_coarse);
-  pad_coarse_to_fine_interleaved(&plan->props, &transformed_coarse_info, scratch_coarse, &transformed_fine_info, scratch_fine, 1);
+  halve_nyquist_components(parent, &transformed_coarse_info, scratch_coarse);
+  pad_coarse_to_fine_interleaved(parent, &transformed_coarse_info, scratch_coarse, &transformed_fine_info, scratch_fine, 1);
   time_point_save(&plan->after_padding);
   fftw_execute_dft_c2r(plan->real_backward, scratch_fine, out);
   time_point_save(&plan->after_backward);
@@ -285,18 +283,18 @@ static void naive_interpolate_real(naive_plan plan, double *in, double *out)
   rs_free(scratch_fine);
 }
 
-static void naive_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout)
+static void naive_interpolate_execute_split(interpolate_plan parent, double *rin, double *iin, double *rout, double *iout)
 {
-  naive_plan plan = (naive_plan) detail;
-  assert(INTERPOLATE_SPLIT == plan->props.type || INTERPOLATE_SPLIT_PRODUCT == plan->props.type);
+  naive_plan plan = (naive_plan) parent;
+  assert(INTERPOLATE_SPLIT == parent->type || INTERPOLATE_SPLIT_PRODUCT == parent->type);
 
   time_point_save(&plan->before);
 
   if (plan->strategy == PACKED)
   {
     block_info_t coarse_info, fine_info;
-    get_block_info_coarse(&plan->props, &coarse_info);
-    get_block_info_fine(&plan->props, &fine_info);
+    get_block_info_coarse(parent, &coarse_info);
+    get_block_info_fine(parent, &fine_info);
     const size_t block_size = num_elements_block(&coarse_info);
 
     fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
@@ -306,8 +304,8 @@ static void naive_interpolate_execute_split(const void *detail, double *rin, dou
     time_point_save(&plan->before_forward);
     fftw_execute_dft(plan->interleaved_forward, scratch_coarse, scratch_coarse);
     time_point_save(&plan->after_forward);
-    halve_nyquist_components(&plan->props, &coarse_info, scratch_coarse);
-    pad_coarse_to_fine_interleaved(&plan->props, &coarse_info, scratch_coarse, &fine_info, scratch_fine, 0);
+    halve_nyquist_components(parent, &coarse_info, scratch_coarse);
+    pad_coarse_to_fine_interleaved(parent, &coarse_info, scratch_coarse, &fine_info, scratch_fine, 0);
     time_point_save(&plan->after_padding);
     fftw_execute_dft(plan->interleaved_backward, scratch_fine, scratch_fine);
     time_point_save(&plan->after_backward);
@@ -329,14 +327,14 @@ static void naive_interpolate_execute_split(const void *detail, double *rin, dou
   time_point_save(&plan->after);
 }
 
-void naive_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out)
+void naive_interpolate_execute_split_product(interpolate_plan parent, double *rin, double *iin, double *out)
 {
-  naive_plan plan = (naive_plan) detail;
-  assert(INTERPOLATE_SPLIT_PRODUCT == plan->props.type);
+  naive_plan plan = (naive_plan) parent;
+  assert(INTERPOLATE_SPLIT_PRODUCT == parent->type);
 
   time_point_save(&plan->before);
 
-  const size_t block_size = num_elements(&plan->props);
+  const size_t block_size = num_elements(parent);
 
   if (plan->strategy == PACKED)
   {
@@ -344,7 +342,7 @@ void naive_interpolate_execute_split_product(const void *detail, double *rin, do
     fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
 
     interleave_real(block_size, (double*) scratch_coarse, rin, iin);
-    naive_interpolate_execute_interleaved(detail, scratch_coarse, scratch_fine);
+    naive_interpolate_execute_interleaved(parent, scratch_coarse, scratch_fine);
     complex_to_product(8 * block_size, scratch_fine, out);
 
     rs_free(scratch_coarse);
@@ -353,7 +351,7 @@ void naive_interpolate_execute_split_product(const void *detail, double *rin, do
   else if (plan->strategy == SEPARATE)
   {
     double *const scratch_fine = rs_alloc_real(8 * block_size);
-    naive_interpolate_execute_split(detail, rin, iin, out, scratch_fine);
+    naive_interpolate_execute_split(parent, rin, iin, out, scratch_fine);
     pointwise_multiply_real(8 * block_size, out, scratch_fine);
     rs_free(scratch_fine);
   }
@@ -365,9 +363,9 @@ void naive_interpolate_execute_split_product(const void *detail, double *rin, do
   time_point_save(&plan->after);
 }
 
-void naive_interpolate_print_timings(const void *detail)
+void naive_interpolate_print_timings(const interpolate_plan parent)
 {
-  naive_plan plan = (naive_plan) detail;
+  naive_plan plan = (naive_plan) parent;
   printf("Forward: %f\n", time_point_delta(&plan->before_forward, &plan->after_forward));
   printf("Padding: %f\n", time_point_delta(&plan->after_forward, &plan->after_padding));
   printf("Backward: %f\n", time_point_delta(&plan->after_padding, &plan->after_backward));

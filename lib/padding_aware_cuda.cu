@@ -26,7 +26,7 @@ typedef enum
 /// Implementation-specific structure for padding-aware interpolation plans.
 typedef struct
 {
-  interpolate_properties_t props;
+  struct interpolate_plan_s common;
   strategy_t strategy;
 
   cufftHandle interleaved_forward;
@@ -53,18 +53,18 @@ typedef pa_plan_s *pa_plan;
 static interpolate_plan allocate_plan(void);
 
 /* Interface functions */
-static const char *get_name(const void *detail);
-static void pa_interpolate_execute_interleaved(const void *detail, rs_complex *in, rs_complex *out);
-static void pa_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout);
-static void pa_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out);
-static void pa_interpolate_print_timings(const void *detail);
-static void pa_interpolate_destroy_detail(void *detail);
-static void pa_set_flags(const void *detail, const int flags);
-static void pa_get_statistic_float(const void *detail, const int statistic, const int index, stat_type_t *type, double *result);
+static const char *get_name(const interpolate_plan plan);
+static void pa_interpolate_execute_interleaved(interpolate_plan plan, rs_complex *in, rs_complex *out);
+static void pa_interpolate_execute_split(interpolate_plan plan, double *rin, double *iin, double *rout, double *iout);
+static void pa_interpolate_execute_split_product(interpolate_plan plan, double *rin, double *iin, double *out);
+static void pa_interpolate_print_timings(const interpolate_plan plan);
+static void pa_interpolate_destroy_detail(interpolate_plan plan);
+static void pa_set_flags(interpolate_plan plan, const int flags);
+static void pa_get_statistic_float(const interpolate_plan plan, const int statistic, const int index, stat_type_t *type, double *result);
 
 static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int n2, int flags);
 
-static const char *get_name(const void *detail)
+static const char *get_name(const interpolate_plan plan)
 {
   return "padding-aware-cuda";
 }
@@ -73,13 +73,10 @@ static interpolate_plan allocate_plan(void)
 {
   setup_threading();
 
-  interpolate_plan holder = (interpolate_plan) malloc(sizeof(interpolate_plan_s));
+  interpolate_plan holder = (interpolate_plan) malloc(sizeof(pa_plan_s));
   assert(holder != NULL);
 
   holder->ref_cnt = 1;
-
-  holder->detail = malloc(sizeof(pa_plan_s));
-  assert(holder->detail != NULL);
 
   holder->get_name = get_name;
   holder->set_flags = pa_set_flags;
@@ -93,9 +90,9 @@ static interpolate_plan allocate_plan(void)
   return holder;
 }
 
-static void pa_set_flags(const void *detail, const int flags)
+static void pa_set_flags(interpolate_plan parent, const int flags)
 {
-  pa_plan plan = (pa_plan) detail;
+  pa_plan plan = (pa_plan) parent;
 
   const int conflicting_layouts = PREFER_PACKED_LAYOUT | PREFER_SPLIT_LAYOUT;
   assert((flags & conflicting_layouts) != conflicting_layouts);
@@ -107,9 +104,9 @@ static void pa_set_flags(const void *detail, const int flags)
     plan->strategy = SEPARATE;
 }
 
-static void pa_get_statistic_float(const void *detail, const int statistic, const int index, stat_type_t *type, double *result)
+static void pa_get_statistic_float(const interpolate_plan parent, const int statistic, const int index, stat_type_t *type, double *result)
 {
-  pa_plan plan = (pa_plan) detail;
+  pa_plan plan = (pa_plan) parent;
 
   switch(statistic)
   {
@@ -125,21 +122,22 @@ static void pa_get_statistic_float(const void *detail, const int statistic, cons
 
 static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)
 {
-  populate_properties(&plan->props, type, n0, n1, n2);
-  const size_t block_size = num_elements(&plan->props);
+  populate_properties((interpolate_plan) plan, type, n0, n1, n2);
+  interpolate_plan parent = cast_to_plan(plan);
+  const size_t block_size = num_elements(parent);
 
   block_info_t fine_info;
-  get_block_info_fine(&plan->props, &fine_info);
+  get_block_info_fine(parent, &fine_info);
 
-  int rev_dims[] = { plan->props.dims[2], plan->props.dims[1], plan->props.dims[0] };
+  int rev_dims[] = { plan_input_size(parent, 2), plan_input_size(parent, 1), plan_input_size(parent, 0) };
 
   CUFFT_CHECK(cufftPlanMany(&plan->interleaved_forward, 3, rev_dims, NULL, 1, 0, NULL, 1, 0, CUFFT_Z2Z, 1));
 
   // For small FFT sizes, some corners may be size zero, which CUFFT dislikes.
   for(int corner = 0; corner < 2; ++corner)
   {
-    plan->n2_backward_interleaved_needed[corner] = (corner_size(plan->props.dims[0], corner) != 0);
-    plan->n1_backward_interleaved_needed[corner] = (corner_size(plan->props.dims[0], corner) != 0);
+    plan->n2_backward_interleaved_needed[corner] = (corner_size(plan_input_size(parent, 0), corner) != 0);
+    plan->n1_backward_interleaved_needed[corner] = (corner_size(plan_input_size(parent, 0), corner) != 0);
   }
 
   // Interpolation in direction 2, iteration in direction 0, positive frequencies
@@ -148,7 +146,7 @@ static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int 
     CUFFT_CHECK(cufftPlanMany(&plan->n2_backward_interleaved[0], 1, &fine_info.dims[2],
         &fine_info.strides[2], fine_info.strides[2], fine_info.strides[0],
         &fine_info.strides[2], fine_info.strides[2], fine_info.strides[0],
-        CUFFT_Z2Z, corner_size(plan->props.dims[0], 0)));
+        CUFFT_Z2Z, corner_size(plan_input_size(parent, 0), 0)));
   }
 
   // Interpolation in direction 2, iteration in direction 0, negative frequencies
@@ -157,7 +155,7 @@ static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int 
     CUFFT_CHECK(cufftPlanMany(&plan->n2_backward_interleaved[1], 1, &fine_info.dims[2],
         &fine_info.dims[2], fine_info.strides[2], fine_info.strides[0],
         &fine_info.dims[2], fine_info.strides[2], fine_info.strides[0],
-        CUFFT_Z2Z, corner_size(plan->props.dims[0], 1)));
+        CUFFT_Z2Z, corner_size(plan_input_size(parent, 0), 1)));
   }
 
   // Interpolation in direction 1, iteration in direction 0, positive frequencies
@@ -166,7 +164,7 @@ static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int 
     CUFFT_CHECK(cufftPlanMany(&plan->n1_backward_interleaved[0], 1, &fine_info.dims[1],
         &fine_info.dims[1], fine_info.strides[1], fine_info.strides[0],
         &fine_info.dims[1], fine_info.strides[1], fine_info.strides[0],
-        CUFFT_Z2Z, corner_size(plan->props.dims[0], 0)));
+        CUFFT_Z2Z, corner_size(plan_input_size(parent, 0), 0)));
   }
 
   // Interpolation in direction 1, iteration in direction 0, negative frequencies
@@ -175,7 +173,7 @@ static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int 
     CUFFT_CHECK(cufftPlanMany(&plan->n1_backward_interleaved[1], 1, &fine_info.dims[1],
         &fine_info.dims[1], fine_info.strides[1], fine_info.strides[0],
         &fine_info.dims[1], fine_info.strides[1], fine_info.strides[0],
-        CUFFT_Z2Z, corner_size(plan->props.dims[0], 1)));
+        CUFFT_Z2Z, corner_size(plan_input_size(parent, 0), 1)));
   }
 
   // Interpolation in direction 0, iteration in direction 1, all frequencies
@@ -190,7 +188,7 @@ static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int 
 interpolate_plan interpolate_plan_3d_padding_aware_cuda_interleaved(int n0, int n1, int n2, int flags)
 {
   interpolate_plan wrapper = allocate_plan();
-  pa_plan plan = (pa_plan) wrapper->detail;
+  pa_plan plan = (pa_plan) wrapper;
 
   plan_common(plan, INTERPOLATE_INTERLEAVED, n0, n1, n2, flags);
   plan->strategy = PACKED;
@@ -200,18 +198,18 @@ interpolate_plan interpolate_plan_3d_padding_aware_cuda_interleaved(int n0, int 
 
 interpolate_plan interpolate_plan_3d_padding_aware_cuda_split(int n0, int n1, int n2, int flags)
 {
-  interpolate_plan wrapper = allocate_plan();
-  pa_plan plan = (pa_plan) wrapper->detail;
+  interpolate_plan parent = allocate_plan();
+  pa_plan plan = (pa_plan) parent;
 
   plan_common(plan, INTERPOLATE_SPLIT, n0, n1, n2, flags);
 
   block_info_t coarse_info, fine_info, transformed_coarse_info, transformed_fine_info;
-  get_block_info_coarse(&plan->props, &coarse_info);
-  get_block_info_fine(&plan->props, &fine_info);
-  get_block_info_real_recip_coarse(&plan->props, &transformed_coarse_info);
-  get_block_info_real_recip_fine(&plan->props, &transformed_fine_info);
+  get_block_info_coarse(parent, &coarse_info);
+  get_block_info_fine(parent, &fine_info);
+  get_block_info_real_recip_coarse(parent, &transformed_coarse_info);
+  get_block_info_real_recip_fine(parent, &transformed_fine_info);
 
-  int rev_dims[] = { plan->props.dims[2], plan->props.dims[1], plan->props.dims[0] };
+  int rev_dims[] = { plan_input_size(parent, 2), plan_input_size(parent, 1), plan_input_size(parent, 0) };
 
   CUFFT_CHECK(cufftPlanMany(&plan->real_forward, 3, rev_dims, NULL, 1, 0, NULL, 1, 0, CUFFT_D2Z, 1));
 
@@ -221,7 +219,7 @@ interpolate_plan interpolate_plan_3d_padding_aware_cuda_split(int n0, int n1, in
     CUFFT_CHECK(cufftPlanMany(&plan->n2_backward_real, 1, &transformed_fine_info.dims[2],
       &transformed_fine_info.dims[2], transformed_fine_info.strides[2], transformed_fine_info.strides[0],
       &transformed_fine_info.dims[2], transformed_fine_info.strides[2], transformed_fine_info.strides[0],
-      CUFFT_Z2Z, corner_size(plan->props.dims[0], 0)));
+      CUFFT_Z2Z, corner_size(plan_input_size(parent, 0), 0)));
   }
 
   // Interpolation in direction 1, iteration in direction 0, positive frequencies
@@ -230,7 +228,7 @@ interpolate_plan interpolate_plan_3d_padding_aware_cuda_split(int n0, int n1, in
     CUFFT_CHECK(cufftPlanMany(&plan->n1_backward_real, 1, &transformed_fine_info.dims[1],
         &transformed_fine_info.dims[1], transformed_fine_info.strides[1], transformed_fine_info.strides[0],
         &transformed_fine_info.dims[1], transformed_fine_info.strides[1], transformed_fine_info.strides[0],
-        CUFFT_Z2Z, corner_size(plan->props.dims[0], 0)));
+        CUFFT_Z2Z, corner_size(plan_input_size(parent, 0), 0)));
   }
 
   // Interpolation in direction 0, iteration in direction 1, all frequencies
@@ -242,32 +240,32 @@ interpolate_plan interpolate_plan_3d_padding_aware_cuda_split(int n0, int n1, in
   plan->has_real_plans = 1;
 
   plan->strategy = SEPARATE;
-  const double separate_time = time_interpolate_split(wrapper, plan->props.dims);
+  const double separate_time = time_interpolate_split(parent);
   plan->strategy = PACKED;
-  const double packed_time = time_interpolate_split(wrapper, plan->props.dims);
+  const double packed_time = time_interpolate_split(parent);
   plan->strategy = (separate_time < packed_time) ? SEPARATE : PACKED;
 
-  return wrapper;
+  return parent;
 }
 
 interpolate_plan interpolate_plan_3d_padding_aware_cuda_product(int n0, int n1, int n2, int flags)
 {
-  interpolate_plan wrapper = interpolate_plan_3d_padding_aware_cuda_split(n0, n1, n2, flags);
-  pa_plan plan = (pa_plan) wrapper->detail;
-  plan->props.type = INTERPOLATE_SPLIT_PRODUCT;
+  interpolate_plan parent = interpolate_plan_3d_padding_aware_cuda_split(n0, n1, n2, flags);
+  pa_plan plan = (pa_plan) parent;
+  parent->type = INTERPOLATE_SPLIT_PRODUCT;
 
   plan->strategy = SEPARATE;
-  const double separate_time = time_interpolate_split_product(wrapper, plan->props.dims);
+  const double separate_time = time_interpolate_split_product(parent);
   plan->strategy = PACKED;
-  const double packed_time = time_interpolate_split_product(wrapper, plan->props.dims);
+  const double packed_time = time_interpolate_split_product(parent);
   plan->strategy = (separate_time < packed_time) ? SEPARATE : PACKED;
 
-  return wrapper;
+  return parent;
 }
 
-static void pa_interpolate_destroy_detail(void *detail)
+static void pa_interpolate_destroy_detail(interpolate_plan parent)
 {
-  pa_plan plan = (pa_plan) detail;
+  pa_plan plan = (pa_plan) parent;
 
   cufftDestroy(plan->interleaved_forward);
 
@@ -289,17 +287,16 @@ static void pa_interpolate_destroy_detail(void *detail)
     cufftDestroy(plan->n1_backward_real);
     cufftDestroy(plan->n0_backward_real);
   }
-
-  free(plan);
 }
 
 static void backward_transform_c2c(const pa_plan plan, const block_info_t *data_info, cuDoubleComplex *data)
 {
   size_t corner_sizes[3][2];
+  interpolate_plan parent = cast_to_plan(plan);
 
   for(int negative = 0; negative < 2; ++negative)
     for(int dim = 0; dim < 3; ++dim)
-      corner_sizes[dim][negative] = corner_size(plan->props.dims[dim], negative);
+      corner_sizes[dim][negative] = corner_size(plan_input_size(parent, dim), negative);
 
   // Interpolation in direction 2
   for(size_t y = 0; y < corner_sizes[1][0]; ++y)
@@ -345,10 +342,11 @@ static void backward_transform_c2r(const pa_plan plan,
   const block_info_t *to_info, double *to)
 {
   size_t corner_sizes[3][2];
+  interpolate_plan parent = cast_to_plan(plan);
 
   for(int negative = 0; negative < 2; ++negative)
     for(int dim = 0; dim < 3; ++dim)
-      corner_sizes[dim][negative] = corner_size(plan->props.dims[dim], negative);
+      corner_sizes[dim][negative] = corner_size(plan_input_size(parent, dim), negative);
 
   // Interpolation in direction 2
   for(size_t y = 0; y < corner_sizes[1][0]; ++y)
@@ -377,16 +375,16 @@ static void backward_transform_c2r(const pa_plan plan,
   CUFFT_CHECK(cufftExecZ2D(plan->n0_backward_real, from, to));
 }
 
-static void pa_interpolate_execute_interleaved(const void *detail, rs_complex *in, rs_complex *out)
+static void pa_interpolate_execute_interleaved(interpolate_plan parent, rs_complex *in, rs_complex *out)
 {
-  pa_plan plan = (pa_plan) detail;
+  pa_plan plan = (pa_plan) parent;
   assert(plan->strategy == PACKED);
 
   time_point_save(&plan->before);
 
   block_info_t coarse_info, fine_info;
-  get_block_info_coarse(&plan->props, &coarse_info);
-  get_block_info_fine(&plan->props, &fine_info);
+  get_block_info_coarse(parent, &coarse_info);
+  get_block_info_fine(parent, &fine_info);
   const size_t block_size = num_elements_block(&coarse_info);
 
   thrust::device_vector<cuDoubleComplex> dev_in(block_size);
@@ -398,8 +396,8 @@ static void pa_interpolate_execute_interleaved(const void *detail, rs_complex *i
 
   CUFFT_CHECK(cufftExecZ2Z(plan->interleaved_forward, thrust::raw_pointer_cast(&dev_in[0]), thrust::raw_pointer_cast(&dev_in[0]), CUFFT_FORWARD));
 
-  halve_nyquist_components_cuda(&plan->props, &coarse_info, thrust::raw_pointer_cast(&dev_in[0]));
-  pad_coarse_to_fine_interleaved_cuda(&plan->props, 
+  halve_nyquist_components_cuda(parent, &coarse_info, thrust::raw_pointer_cast(&dev_in[0]));
+  pad_coarse_to_fine_interleaved_cuda(parent, 
     &coarse_info, thrust::raw_pointer_cast(&dev_in[0]), &fine_info, thrust::raw_pointer_cast(&dev_out[0]), 0);
   
   backward_transform_c2c(plan, &fine_info, thrust::raw_pointer_cast(&dev_out[0]));
@@ -415,10 +413,11 @@ static void pa_interpolate_execute_interleaved(const void *detail, rs_complex *i
 static void pa_interpolate_real(pa_plan plan, double *in, const thrust::device_ptr<double>& dev_out)
 {
   block_info_t coarse_info, fine_info, transformed_coarse_info, transformed_fine_info;
-  get_block_info_coarse(&plan->props, &coarse_info);
-  get_block_info_fine(&plan->props, &fine_info);
-  get_block_info_real_recip_coarse(&plan->props, &transformed_coarse_info);
-  get_block_info_real_recip_fine(&plan->props, &transformed_fine_info);
+  interpolate_plan parent = cast_to_plan(plan);
+  get_block_info_coarse(parent, &coarse_info);
+  get_block_info_fine(parent, &fine_info);
+  get_block_info_real_recip_coarse(parent, &transformed_coarse_info);
+  get_block_info_real_recip_fine(parent, &transformed_fine_info);
 
   const size_t block_size = num_elements_block(&coarse_info);
   const size_t transformed_size_coarse = num_elements_block(&transformed_coarse_info);
@@ -434,8 +433,8 @@ static void pa_interpolate_real(pa_plan plan, double *in, const thrust::device_p
 
   CUFFT_CHECK(cufftExecD2Z(plan->real_forward, thrust::raw_pointer_cast(&dev_in[0]), thrust::raw_pointer_cast(&scratch_coarse[0])));
 
-  halve_nyquist_components_cuda(&plan->props, &transformed_coarse_info, thrust::raw_pointer_cast(&scratch_coarse[0]));
-  pad_coarse_to_fine_interleaved_cuda(&plan->props, 
+  halve_nyquist_components_cuda(parent, &transformed_coarse_info, thrust::raw_pointer_cast(&scratch_coarse[0]));
+  pad_coarse_to_fine_interleaved_cuda(parent, 
     &transformed_coarse_info, thrust::raw_pointer_cast(&scratch_coarse[0]), 
     &transformed_fine_info,   thrust::raw_pointer_cast(&scratch_fine[0]), 1);
 
@@ -443,25 +442,25 @@ static void pa_interpolate_real(pa_plan plan, double *in, const thrust::device_p
     &fine_info, thrust::raw_pointer_cast(dev_out));
 }
 
-static void pa_interpolate_execute_split(const void *detail, double *rin, double *iin, double *rout, double *iout)
+static void pa_interpolate_execute_split(interpolate_plan parent, double *rin, double *iin, double *rout, double *iout)
 {
-  pa_plan plan = (pa_plan) detail;
-  assert(INTERPOLATE_SPLIT == plan->props.type || INTERPOLATE_SPLIT_PRODUCT == plan->props.type);
+  pa_plan plan = (pa_plan) parent;
+  assert(INTERPOLATE_SPLIT == parent->type || INTERPOLATE_SPLIT_PRODUCT == parent->type);
 
   time_point_save(&plan->before);
 
   if (plan->strategy == PACKED)
   {
     block_info_t coarse_info, fine_info;
-    get_block_info_coarse(&plan->props, &coarse_info);
-    get_block_info_fine(&plan->props, &fine_info);
+    get_block_info_coarse(parent, &coarse_info);
+    get_block_info_fine(parent, &fine_info);
     const size_t block_size = num_elements_block(&coarse_info);
 
     rs_complex *const scratch_coarse = rs_alloc_complex(block_size);
     rs_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
 
     interleave_real(block_size, (double*) scratch_coarse, rin, iin);
-    pa_interpolate_execute_interleaved(detail, scratch_coarse, scratch_fine);
+    pa_interpolate_execute_interleaved(parent, scratch_coarse, scratch_fine);
     deinterleave_real(8 * block_size, (const double*) scratch_fine, rout, iout);
 
     rs_free(scratch_fine);
@@ -470,7 +469,7 @@ static void pa_interpolate_execute_split(const void *detail, double *rin, double
   else if (plan->strategy == SEPARATE)
   {
     block_info_t fine_info;
-    get_block_info_fine(&plan->props, &fine_info);
+    get_block_info_fine(parent, &fine_info);
     const size_t fine_block_size = num_elements_block(&fine_info);
 
     thrust::device_vector<double> dev_out_r(fine_block_size);
@@ -497,14 +496,14 @@ static void pa_interpolate_execute_split(const void *detail, double *rin, double
   time_point_save(&plan->after);
 }
 
-static void pa_interpolate_execute_split_product(const void *detail, double *rin, double *iin, double *out)
+static void pa_interpolate_execute_split_product(interpolate_plan parent, double *rin, double *iin, double *out)
 {
-  pa_plan plan = (pa_plan) detail;
-  assert(INTERPOLATE_SPLIT_PRODUCT == plan->props.type);
+  pa_plan plan = (pa_plan) parent;
+  assert(INTERPOLATE_SPLIT_PRODUCT == parent->type);
 
   time_point_save(&plan->before);
 
-  const size_t block_size = num_elements(&plan->props);
+  const size_t block_size = num_elements(parent);
 
   if (plan->strategy == PACKED)
   {
@@ -512,7 +511,7 @@ static void pa_interpolate_execute_split_product(const void *detail, double *rin
     rs_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
 
     interleave_real(block_size, (double*) scratch_coarse, rin, iin);
-    pa_interpolate_execute_interleaved(detail, scratch_coarse, scratch_fine);
+    pa_interpolate_execute_interleaved(parent, scratch_coarse, scratch_fine);
     complex_to_product(8 * block_size, scratch_fine, out);
 
     rs_free(scratch_coarse);
@@ -521,7 +520,7 @@ static void pa_interpolate_execute_split_product(const void *detail, double *rin
   else if (plan->strategy == SEPARATE)
   {
     block_info_t fine_info;
-    get_block_info_fine(&plan->props, &fine_info);
+    get_block_info_fine(parent, &fine_info);
     const size_t fine_block_size = num_elements_block(&fine_info);
 
     thrust::device_vector<double> dev_out_r(fine_block_size);
@@ -541,7 +540,7 @@ static void pa_interpolate_execute_split_product(const void *detail, double *rin
   time_point_save(&plan->after);
 }
 
-void pa_interpolate_print_timings(const void *detail)
+void pa_interpolate_print_timings(const interpolate_plan plan)
 {
   /*
   pa_plan plan = (pa_plan) detail;

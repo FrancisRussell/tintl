@@ -14,46 +14,55 @@ static const int best_plan_cache_enabled = 1;
 
 const char *interpolate_get_name(const interpolate_plan plan)
 {
-  return plan->get_name(plan->detail);
+  validate_plan(plan);
+  return plan->get_name(plan);
 }
 
 void interpolate_execute_interleaved(const interpolate_plan plan, rs_complex *in, rs_complex *out)
 {
-  plan->execute_interleaved(plan->detail, in, out);
+  validate_plan(plan);
+  plan->execute_interleaved(plan, in, out);
 }
 
 void interpolate_execute_split(const interpolate_plan plan, double *rin, double *iin, double *rout, double *iout)
 {
-  plan->execute_split(plan->detail, rin, iin, rout, iout);
+  validate_plan(plan);
+  plan->execute_split(plan, rin, iin, rout, iout);
 }
 
 void interpolate_execute_split_product(const interpolate_plan plan, double *rin, double *iin, double *out)
 {
-  plan->execute_split_product(plan->detail, rin, iin, out);
+  validate_plan(plan);
+  plan->execute_split_product(plan, rin, iin, out);
 }
 
 void interpolate_print_timings(const interpolate_plan plan)
 {
-  plan->print_timings(plan->detail);
+  validate_plan(plan);
+  plan->print_timings(plan);
 }
 
 void interpolate_get_statistic_float(const interpolate_plan plan, int statistic, int index, stat_type_t *type, double *value)
 {
-  plan->get_statistic_float(plan->detail, statistic, index, type, value);
+  validate_plan(plan);
+  plan->get_statistic_float(plan, statistic, index, type, value);
 }
 
 void interpolate_set_flags(const interpolate_plan plan, const int flags)
 {
-  plan->set_flags(plan->detail, flags);
+  validate_plan(plan);
+  plan->set_flags(plan, flags);
 }
 
 void interpolate_destroy_plan(interpolate_plan plan)
 {
+  validate_plan(plan);
   interpolate_dec_ref_count(plan);
 }
 
 int interpolate_inc_ref_count(interpolate_plan plan)
 {
+  validate_plan(plan);
   int count;
 
 #ifdef _OPENMP
@@ -66,6 +75,7 @@ int interpolate_inc_ref_count(interpolate_plan plan)
 
 int interpolate_dec_ref_count(interpolate_plan plan)
 {
+  validate_plan(plan);
   int count;
 
 #ifdef _OPENMP
@@ -77,7 +87,7 @@ int interpolate_dec_ref_count(interpolate_plan plan)
 
   if (count == 0)
   {
-    plan->destroy_detail(plan->detail);
+    plan->destroy_detail(plan);
     free(plan);
   }
 
