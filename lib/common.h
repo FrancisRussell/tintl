@@ -168,6 +168,7 @@ static inline size_t num_elements_block(const block_info_t *block_info)
 
 static inline void validate_plan(const interpolate_plan plan)
 {
+  assert(plan != NULL && "Null pointer passed as interpolation plan handle.");
   assert(plan->magic == interpolate_plan_magic_value && "Corrupt or invalid plan detected.");
 }
 
