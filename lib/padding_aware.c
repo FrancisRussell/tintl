@@ -105,7 +105,7 @@ static void pa_get_statistic_float(const interpolate_plan parent, const int stat
 static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)
 {
   populate_properties((interpolate_plan) plan, type, n0, n1, n2);
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
 
   const size_t block_size = num_elements(parent);
 
@@ -274,7 +274,7 @@ static void pa_interpolate_destroy_detail(interpolate_plan parent)
 static void backward_transform_c2c(const pa_plan plan, const block_info_t *data_info, fftw_complex *data)
 {
   size_t corner_sizes[3][2];
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
 
   for(int negative = 0; negative < 2; ++negative)
     for(int dim = 0; dim < 3; ++dim)
@@ -324,7 +324,7 @@ static void backward_transform_c2r(const pa_plan plan,
   const block_info_t *to_info, double *to)
 {
   size_t corner_sizes[3][2];
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
 
   for(int negative = 0; negative < 2; ++negative)
     for(int dim = 0; dim < 3; ++dim)
@@ -384,7 +384,7 @@ static void pa_interpolate_execute_interleaved(interpolate_plan parent, fftw_com
 
 static void pa_interpolate_real(pa_plan plan, double *in, double *out)
 {
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
 
   block_info_t transformed_coarse_info, transformed_fine_info, fine_info;
   get_block_info_real_recip_coarse(parent, &transformed_coarse_info);

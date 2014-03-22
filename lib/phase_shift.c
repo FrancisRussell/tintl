@@ -202,14 +202,14 @@ static inline void transform_out_real(phase_shift_plan plan, int dim, const bloc
 
 static inline void stage_in_interleaved(phase_shift_plan plan, int dim, fftw_complex *in, fftw_complex *scratch)
 {
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
   gather_complex(parent->input_size.dims[dim], parent->input_size.strides[dim], in, scratch);
   fftw_execute_dft(plan->dfts_interleaved_staged[dim], scratch, scratch);
 }
 
 static inline void stage_out_interleaved(phase_shift_plan plan, int dim, fftw_complex *out, fftw_complex *scratch)
 {
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
   fftw_execute_dft(plan->idfts_interleaved_staged[dim], scratch, scratch);
   scatter_complex(parent->input_size.dims[dim], parent->input_size.strides[dim], out, scratch);
 }
@@ -233,7 +233,7 @@ static size_t round_align(const size_t value)
 static size_t max_dimension(const phase_shift_plan plan)
 {
   size_t max_dim = 0;
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
 
   for(int dim=0; dim < 3; ++dim)
     max_dim = (max_dim < parent->input_size.dims[dim] ? parent->input_size.dims[dim] : max_dim);
@@ -362,7 +362,7 @@ static void plan_common(phase_shift_plan plan, interpolation_t type, int n0, int
 {
   flags |= FFTW_MEASURE;
   populate_properties((interpolate_plan) plan, type, n0, n1, n2);
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
 
   for(int dim = 0; dim < 3; ++dim)
   {
@@ -746,7 +746,7 @@ static void scatter_split(size_t size, size_t stride, double *rout, double *iout
 
 static void gather_blocks_complex(phase_shift_plan plan, fftw_complex *blocks[8], fftw_complex *out)
 {
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
 
   for(size_t i2=0; i2 < parent->input_size.dims[2] * 2; ++i2)
   {
@@ -763,7 +763,7 @@ static void gather_blocks_complex(phase_shift_plan plan, fftw_complex *blocks[8]
 
 static void gather_blocks_real(phase_shift_plan plan, double *blocks[8], double *out)
 {
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
 
   for(size_t i2=0; i2 < parent->input_size.dims[2] * 2; ++i2)
   {
@@ -780,7 +780,7 @@ static void gather_blocks_real(phase_shift_plan plan, double *blocks[8], double 
 
 static void gather_blocks_split(phase_shift_plan plan, fftw_complex *blocks[8], double *rout, double *iout)
 {
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
 
   for(size_t i2=0; i2 < parent->input_size.dims[2] * 2; ++i2)
   {
@@ -798,7 +798,7 @@ static void gather_blocks_split(phase_shift_plan plan, fftw_complex *blocks[8], 
 
 static void gather_blocks_product(phase_shift_plan plan, fftw_complex *blocks[8], double *out)
 {
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
 
   for(size_t i2=0; i2 < parent->input_size.dims[2] * 2; ++i2)
   {
@@ -858,7 +858,7 @@ static void phase_shift_interpolate_execute_interleaved(interpolate_plan parent,
 static void interpolate_real_common(const phase_shift_plan plan, double *blocks[8])
 {
   block_info_t coarse_info;
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
   get_block_info_coarse(parent, &coarse_info);
   const size_t max_dim = max_dimension(plan);
   double *const scratch_real = rs_alloc_real(max_dim);
@@ -982,7 +982,7 @@ void phase_shift_interpolate_print_timings(const interpolate_plan parent)
 
 static inline void rotate_dim0(phase_shift_plan plan, fftw_complex *data)
 {
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
 
   const size_t n0 = parent->input_size.dims[0];
   const size_t n1 = parent->input_size.dims[1];
@@ -1003,7 +1003,7 @@ static inline void rotate_dim0(phase_shift_plan plan, fftw_complex *data)
 
 static inline void rotate_dim1(phase_shift_plan plan, fftw_complex *data)
 {
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
 
   const size_t n0 = parent->input_size.dims[0];
   const size_t n1 = parent->input_size.dims[1];
@@ -1026,7 +1026,7 @@ static inline void rotate_dim1(phase_shift_plan plan, fftw_complex *data)
 
 static inline void rotate_dim2(phase_shift_plan plan, fftw_complex *data)
 {
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
 
   const size_t n0 = parent->input_size.dims[0];
   const size_t n1 = parent->input_size.dims[1];
@@ -1050,7 +1050,7 @@ static inline void rotate_dim2(phase_shift_plan plan, fftw_complex *data)
 static void expand_dim0(phase_shift_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch)
 {
   static const int dim = 0;
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
 
   if (plan->blocking_strategy[0] == PENCIL_LEVEL)
   {
@@ -1111,7 +1111,7 @@ static void expand_dim0_real(phase_shift_plan plan, const block_info_t *block_in
 static void expand_dim1(phase_shift_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch)
 {
   static const int dim = 1;
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
 
   if (plan->blocking_strategy[1] == PENCIL_LEVEL)
   {
@@ -1178,7 +1178,7 @@ static void expand_dim1_real(phase_shift_plan plan, const block_info_t *block_in
 static void expand_dim2(phase_shift_plan plan, fftw_complex *in, fftw_complex *out, fftw_complex *scratch)
 {
   static const int dim = 2;
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
 
   if (plan->blocking_strategy[dim] == PENCIL_LEVEL)
   {

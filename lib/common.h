@@ -171,7 +171,7 @@ static inline void validate_plan(const interpolate_plan plan)
   assert(plan->magic == interpolate_plan_magic_value && "Corrupt or invalid plan detected.");
 }
 
-static interpolate_plan cast_to_plan(void *vplan)
+static inline interpolate_plan cast_to_parent(void *vplan)
 {
   interpolate_plan plan = (interpolate_plan) vplan;
   validate_plan(plan);

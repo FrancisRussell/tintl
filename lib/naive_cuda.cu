@@ -102,7 +102,7 @@ static void naive_get_statistic_float(const interpolate_plan parent, int statist
 static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, int n2, int flags)
 {
   populate_properties((interpolate_plan) plan, type, n0, n1, n2);
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
 
   block_info_t coarse_info, fine_info;
   get_block_info_coarse(parent, &coarse_info);
@@ -226,7 +226,7 @@ static void naive_interpolate_execute_interleaved(interpolate_plan parent, rs_co
 static void naive_interpolate_real(naive_plan plan, double *in, const thrust::device_ptr<double>& dev_out)
 {
   block_info_t coarse_info, transformed_coarse_info, transformed_fine_info;
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
   get_block_info_coarse(parent, &coarse_info);
   get_block_info_real_recip_coarse(parent, &transformed_coarse_info);
   get_block_info_real_recip_fine(parent, &transformed_fine_info);

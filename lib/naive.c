@@ -83,7 +83,7 @@ static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, i
 {
   populate_properties((interpolate_plan) plan, type, n0, n1, n2);
 
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
   const size_t block_size = num_elements(parent);
 
   fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
@@ -239,7 +239,7 @@ static void naive_interpolate_execute_interleaved(interpolate_plan parent, fftw_
 
 static void naive_interpolate_real(naive_plan plan, double *in, double *out)
 {
-  interpolate_plan parent = cast_to_plan(plan);
+  interpolate_plan parent = cast_to_parent(plan);
 
   block_info_t coarse_info, transformed_coarse_info, transformed_fine_info;
   get_block_info_coarse(parent, &coarse_info);
