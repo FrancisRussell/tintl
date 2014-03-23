@@ -144,10 +144,6 @@ interpolate_plan interpolate_plan_3d_naive_cuda_split(int n0, int n1, int n2, in
   get_block_info_real_recip_coarse(parent, &transformed_coarse_info);
   get_block_info_real_recip_fine(parent, &transformed_fine_info);
 
-  const size_t block_size = num_elements_block(&coarse_info);
-  const size_t transformed_size_coarse = num_elements_block(&transformed_coarse_info);
-  const size_t transformed_size_fine = num_elements_block(&transformed_fine_info);
-
   int rev_dims[] = { coarse_info.dims[2], coarse_info.dims[1], coarse_info.dims[0] };
   int rev_fine_dims[] = { fine_info.dims[2], fine_info.dims[1], fine_info.dims[0] };
 
