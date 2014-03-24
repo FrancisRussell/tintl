@@ -153,7 +153,10 @@ int pm_count(papi_multiplex_t *pm, const papi_event_t event, long long *value)
   {
     if (pm_common_events[i] == event)
     {
-      *value = pm->common_values[i] / pm->total_samples;
+      if (pm->total_samples == 0)
+        *value = -1;
+      else
+        *value = pm->common_values[i] / pm->total_samples;
       return PAPI_OK;
     }
   }
@@ -163,7 +166,10 @@ int pm_count(papi_multiplex_t *pm, const papi_event_t event, long long *value)
     const papi_eventset_t event_set = pm->events_info[i].event_set;
     if (PAPI_num_events(event_set) > pm_num_common_events && pm->events_info[i].event == event)
     {
-      *value = pm->events_info[i].value / pm->events_info[i].samples;
+      if (pm->events_info[i].samples == 0)
+        *value = -1;
+      else
+        *value = pm->events_info[i].value / pm->events_info[i].samples;
       return PAPI_OK;
     }
   }
