@@ -14,6 +14,14 @@ OPENMP_CFLAGS = @OPENMP_CFLAGS@
 COMMON_FLAGS += $(OPENMP_CFLAGS)
 endif
 
+ifeq ($(HAVE_PAPI), 1)
+PAPI_BIN = bin/papi_analysis
+PAPI_CFLAGS = @PAPI_CFLAGS@
+COMMON_FLAGS += $(PAPI_CFLAGS)
+PAPI_LDFLAGS = @PAPI_LDFLAGS@
+PAPI_LDLIBS = @PAPI_LDLIBS@
+endif
+
 CFLAGS = $(COMMON_FLAGS)
 FFLAGS = $(COMMON_FLAGS)
 LINKER = $(CC)
@@ -26,8 +34,8 @@ LIB_LDFLAGS_COMPILER = -fPIC $(OPENMP_CFLAGS) $(FFTW_LDFLAGS)
 LIB_LDLIBS = -lrt $(FFTW_LDLIBS)
 
 BIN_LDFLAGS_LINKER = -rpath=../lib -rpath=./lib
-BIN_LDFLAGS_COMPILER = -Llib $(OPENMP_CFLAGS)
-BIN_LDLIBS = -lresample -lm
+BIN_LDFLAGS_COMPILER = -Llib $(OPENMP_CFLAGS) $(PAPI_LDFLAGS)
+BIN_LDLIBS = -lresample -lm $(PAPI_LDLIBS)
 
 ifeq ($(HAVE_CUDA), yes)
 
@@ -59,7 +67,7 @@ LIB_LDFLAGS = $(LIB_LDFLAGS_COMPILER) $(LIB_LDFLAGS_LINKER)
 
 LIB_OBJECTS = $(patsubst %.cu, lib/omp/%.o, $(patsubst %.c, lib/omp/%.o, $(LIB_SOURCES)))
 
-default: lib/libresample.so bin/benchmark
+default: lib/libresample.so bin/benchmark $(PAPI_BIN)
 
 bin/benchmark.o: include/timer.h include/allocation.h include/interpolate.h \
   include/phase_shift.h include/naive.h include/padding_aware.h \
@@ -74,6 +82,8 @@ lib/libresample.so: $(LIB_OBJECTS)
 endif
 
 bin/benchmark: bin/storage.o
+
+bin/papi_analysis: bin/papi_analysis.o bin/papi_multiplex.o
 
 bin/storage.o: bin/storage.h
 
