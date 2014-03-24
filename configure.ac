@@ -57,6 +57,11 @@ AC_ARG_WITH([mkl],
             ]
             )
 
+#PAPI
+AX_WITH_LIBRARY(papi, papi.h, papi, optional)
+AC_SUBST(PAPI_CFLAGS, "$PAPI_CFLAGS")
+AC_SUBST(PAPI_LIBS, "$PAPI_LIBS")
+
 # We need to call unset after each header check due to autoconf caching
 # header checking results irrespective of compiler flags.
 AX_CHECK_LIBRARY([FFTW3], [fftw3.h], [fftw3],
