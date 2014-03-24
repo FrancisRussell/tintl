@@ -69,10 +69,6 @@ LIB_OBJECTS = $(patsubst %.cu, lib/omp/%.o, $(patsubst %.c, lib/omp/%.o, $(LIB_S
 
 default: lib/libresample.so bin/benchmark $(PAPI_BIN)
 
-bin/benchmark.o: include/timer.h include/allocation.h include/interpolate.h \
-  include/phase_shift.h include/naive.h include/padding_aware.h \
-  include/naive_cuda.h include/padding_aware_cuda.h bin/storage.h
-
 ifeq ($(HAVE_OPENMP), 1)
 lib/libresample.so: $(LIB_OBJECTS)
 	$(LINKER) -shared $(LIB_LDFLAGS) $^ -o $@ $(LIB_LDLIBS)
@@ -83,9 +79,18 @@ endif
 
 bin/benchmark: bin/storage.o
 
-bin/papi_analysis: bin/papi_analysis.o bin/papi_multiplex.o
+bin/papi_analysis: bin/papi_analysis.o bin/papi_multiplex.o bin/storage.o
+
+bin/benchmark.o: include/timer.h include/allocation.h include/interpolate.h \
+  include/phase_shift.h include/naive.h include/padding_aware.h \
+  include/naive_cuda.h include/padding_aware_cuda.h bin/storage.h
+
+bin/papi_analysis.o: include/naive.h include/padding_aware.h \
+  include/phase_shift.h bin/storage.h bin/papi_multiplex.h
 
 bin/storage.o: bin/storage.h
+
+bin/papi_multiplex.o: bin/papi_multiplex.h
 
 bin/%: bin/%.o lib/libresample.so
 	$(LINKER) $(BIN_LDFLAGS) $^ -o $@ $(BIN_LDLIBS)
@@ -135,6 +140,6 @@ lib/%/timer.o: include/timer.h
 
 clean:
 	rm -rf lib/st lib/omp
-	rm -f lib/*.o lib/*.so bin/*.o bin/benchmark bin/*.o
+	rm -f lib/*.o lib/*.so bin/*.o bin/benchmark bin/papi_analysis bin/*.o
 
 .PHONY: default clean

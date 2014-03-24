@@ -2,6 +2,7 @@
 #include <papi.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <assert.h>
 
 static int pm_add_empty_event_set(papi_multiplex_t *pm);
 
@@ -31,6 +32,8 @@ void pm_handle_papi_error(const int error, const char *const file, const int lin
 
 static int pm_add_empty_event_set(papi_multiplex_t *pm)
 {
+  assert(pm != NULL);
+
   pm_event_info_t *new_events_info = realloc(pm->events_info, (pm->set_count + 1) * sizeof(struct pm_event_info));
   if (new_events_info == NULL)
     return PAPI_ENOMEM;
@@ -52,6 +55,8 @@ static int pm_add_empty_event_set(papi_multiplex_t *pm)
 
 int pm_init(papi_multiplex_t *pm)
 {
+  assert(pm != NULL);
+
   pm->set_count = 0;
   pm->set_index = 0;
   pm->total_samples = 0;
@@ -63,16 +68,24 @@ int pm_init(papi_multiplex_t *pm)
 
   if (!PAPI_is_initialized())
   {
-    int papi_res;
-    if ((papi_res = PAPI_library_init(PAPI_VER_CURRENT)) != PAPI_OK)
-      return papi_res;
-  }
+    const int papi_res = PAPI_library_init(PAPI_VER_CURRENT);
 
+    if (papi_res < 0)
+      return papi_res;
+
+    if (papi_res != PAPI_VER_CURRENT)
+    {
+      fprintf(stderr, "PAPI library version mismatch!");
+      exit(EXIT_FAILURE);
+    }
+  }
   return pm_add_empty_event_set(pm);
 }
 
 int pm_add_event(papi_multiplex_t *pm, papi_event_t event)
 {
+  assert(pm != NULL);
+
   for(size_t i = 0; i < pm_num_common_events; ++i)
     if (pm_common_events[i] == event)
       return PAPI_OK;
@@ -99,11 +112,14 @@ int pm_add_event(papi_multiplex_t *pm, papi_event_t event)
 
 int pm_start(papi_multiplex_t *pm)
 {
+  assert(pm != NULL);
   return PAPI_start(pm->events_info[pm->set_index].event_set);
 }
 
 int pm_stop(papi_multiplex_t *pm)
 {
+  assert(pm != NULL);
+
   const papi_eventset_t event_set = pm->events_info[pm->set_index].event_set;
   long long counts[pm_num_common_events + 1];
   int papi_res;
@@ -130,6 +146,8 @@ int pm_stop(papi_multiplex_t *pm)
 
 int pm_count(papi_multiplex_t *pm, const papi_event_t event, long long *value)
 {
+  assert(pm != NULL);
+
   for (size_t i = 0; i < pm_num_common_events; ++i)
   {
     if (pm_common_events[i] == event)
@@ -154,6 +172,8 @@ int pm_count(papi_multiplex_t *pm, const papi_event_t event, long long *value)
 
 int pm_destroy(papi_multiplex_t *pm)
 {
+  assert(pm != NULL);
+
   for(size_t i = 0; i < pm->set_count; ++i)
   {
     int papi_res;

@@ -3,6 +3,7 @@
 *.swp
 /aclocal.m4
 /bin/benchmark
+/bin/papi_analysis
 /configure
 /config.log
 /config.status
