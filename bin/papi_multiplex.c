@@ -67,7 +67,7 @@ int pm_init(papi_multiplex_t *pm)
 
   pm->events_info = NULL;
 
-  if (!PAPI_is_initialized())
+  if (PAPI_is_initialized() == PAPI_NOT_INITED)
   {
     const int papi_res = PAPI_library_init(PAPI_VER_CURRENT);
 
