@@ -34,7 +34,8 @@ static int pm_add_empty_event_set(papi_multiplex_t *pm)
 {
   assert(pm != NULL);
 
-  pm_event_info_t *new_events_info = realloc(pm->events_info, (pm->set_count + 1) * sizeof(struct pm_event_info));
+  pm_event_info_t *const new_events_info =
+    realloc(pm->events_info, (pm->set_count + 1) * sizeof(struct pm_event_info));
   if (new_events_info == NULL)
     return PAPI_ENOMEM;
 

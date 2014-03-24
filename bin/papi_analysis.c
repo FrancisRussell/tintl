@@ -15,14 +15,14 @@ void do_profiling(const int *sizes, const size_t count)
   const int size_field_width = 5;
   const int result_field_width = 15;
 
-  plan_constructor_t plan_constructors[] =
+  const plan_constructor_t plan_constructors[] =
   {
     interpolate_plan_3d_naive_interleaved,
     interpolate_plan_3d_padding_aware_interleaved,
     interpolate_plan_3d_phase_shift_interleaved,
   };
 
-  papi_event_t counters[] =
+  const papi_event_t counters[] =
   {
     PAPI_TOT_CYC,
     PAPI_L3_TCM,
