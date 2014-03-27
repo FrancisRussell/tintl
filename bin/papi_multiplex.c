@@ -94,7 +94,7 @@ int pm_add_event(papi_multiplex_t *pm, papi_event_t event)
   papi_eventset_t *final_set = &pm->events_info[pm->set_count - 1].event_set;
   if (PAPI_num_events(*final_set) > pm_num_common_events)
   {
-    int papi_res = pm_add_empty_event_set(pm);
+    int papi_res;
     if ((papi_res = pm_add_empty_event_set(pm)) != PAPI_OK)
       return papi_res;
   }
