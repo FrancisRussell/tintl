@@ -1,5 +1,5 @@
-#ifndef PLAN_CACHE_H
-#define PLAN_CACHE_H
+#ifndef TINTL_PLAN_CACHE_H
+#define TINTL_PLAN_CACHE_H
 
 #ifdef _OPENMP
 #include <omp.h>

@@ -35,7 +35,7 @@ LIB_LDLIBS = -lrt $(FFTW_LDLIBS)
 
 BIN_LDFLAGS_LINKER = -rpath=../lib -rpath=./lib
 BIN_LDFLAGS_COMPILER = -Llib $(OPENMP_CFLAGS) $(PAPI_LDFLAGS)
-BIN_LDLIBS = -lresample -lm $(PAPI_LDLIBS)
+BIN_LDLIBS = -ltintl -lm $(PAPI_LDLIBS)
 
 ifeq ($(HAVE_CUDA), yes)
 
@@ -67,13 +67,13 @@ LIB_LDFLAGS = $(LIB_LDFLAGS_COMPILER) $(LIB_LDFLAGS_LINKER)
 
 LIB_OBJECTS = $(patsubst %.cu, lib/omp/%.o, $(patsubst %.c, lib/omp/%.o, $(LIB_SOURCES)))
 
-default: lib/libresample.so bin/benchmark $(PAPI_BIN)
+default: lib/libtintl.so bin/benchmark $(PAPI_BIN)
 
 ifeq ($(HAVE_OPENMP), 1)
-lib/libresample.so: $(LIB_OBJECTS)
+lib/libtintl.so: $(LIB_OBJECTS)
 	$(LINKER) -shared $(LIB_LDFLAGS) $^ -o $@ $(LIB_LDLIBS)
 else
-lib/libresample.so: $(LIB_OBJECTS)
+lib/libtintl.so: $(LIB_OBJECTS)
 	$(LINKER) -shared $(LIB_LDFLAGS) $^ -o $@ $(LIB_LDLIBS)
 endif
 
@@ -92,7 +92,7 @@ bin/storage.o: bin/storage.h
 
 bin/papi_multiplex.o: bin/papi_multiplex.h
 
-bin/%: bin/%.o lib/libresample.so
+bin/%: bin/%.o lib/libtintl.so
 	$(LINKER) $(BIN_LDFLAGS) $^ -o $@ $(BIN_LDLIBS)
 
 lib/st/%.o: lib/%.c

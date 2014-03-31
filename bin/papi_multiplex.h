@@ -1,5 +1,5 @@
-#ifndef PAPI_MULTIPLEX_H
-#define PAPI_MULTIPLEX_H
+#ifndef TINTL_PAPI_MULTIPLEX_H
+#define TINTL_PAPI_MULTIPLEX_H
 
 #include <papi.h>
 #include <stddef.h>

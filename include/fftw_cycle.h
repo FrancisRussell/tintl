@@ -1,7 +1,7 @@
-#ifndef FFTW_CYCLE_H
-#define FFTW_CYCLE_H
+#ifndef TINTL_FFTW_CYCLE_H
+#define TINTL_FFTW_CYCLE_H
 
-#include "interpolate_config.h"
+#include "tintl_config.h"
 
 /*
  * Copyright (c) 2003, 2007-11 Matteo Frigo

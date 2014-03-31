@@ -1,5 +1,5 @@
-#ifndef FFTW_UTILITY_H
-#define FFTW_UTILITY_H
+#ifndef TINTL_FFTW_UTILITY_H
+#define TINTL_FFTW_UTILITY_H
 
 #include <fftw3.h>
 

@@ -1,5 +1,5 @@
-#ifndef PADDING_AWARE_H
-#define PADDING_AWARE_H
+#ifndef TINTL_PADDING_AWARE_H
+#define TINTL_PADDING_AWARE_H
 
 /// \file
 /// Functions for construction of interpolation plans using the

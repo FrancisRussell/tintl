@@ -1,5 +1,5 @@
-#ifndef INTERPOLATE_H
-#define INTERPOLATE_H
+#ifndef TINTL_INTERPOLATE_H
+#define TINTL_INTERPOLATE_H
 
 #include "timer.h"
 #include "forward.h"

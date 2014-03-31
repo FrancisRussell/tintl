@@ -1,5 +1,5 @@
-#ifndef COMMON_H
-#define COMMON_H
+#ifndef TINTL_COMMON_H
+#define TINTL_COMMON_H
 
 #include <complex.h>
 #include <stdint.h>

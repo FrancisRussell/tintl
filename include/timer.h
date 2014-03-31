@@ -1,5 +1,5 @@
-#ifndef TIMER_H
-#define TIMER_H
+#ifndef TINTL_TIMER_H
+#define TINTL_TIMER_H
 
 /// \file
 /// Functions for performing wall-clock timings in seconds.

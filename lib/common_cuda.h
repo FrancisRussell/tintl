@@ -1,5 +1,5 @@
-#ifndef COMMON_CUDA_H
-#define COMMON_CUDA_H
+#ifndef TINTL_COMMON_CUDA_H
+#define TINTL_COMMON_CUDA_H
 
 #include <cuComplex.h>
 #include <cufft.h>

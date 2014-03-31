@@ -1,5 +1,5 @@
-#ifndef ALLOCATION_H
-#define ALLOCATION_H
+#ifndef TINTL_ALLOCATION_H
+#define TINTL_ALLOCATION_H
 
 /// \file
 /// Aligned emory allocation routines.

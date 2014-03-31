@@ -1,5 +1,5 @@
-#ifndef STORAGE_H
-#define STORAGE_H
+#ifndef TINTL_STORAGE_H
+#define TINTL_STORAGE_H
 
 #include <complex.h>
 #include <fftw3.h>

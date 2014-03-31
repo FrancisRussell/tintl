@@ -1,5 +1,5 @@
-#ifndef PHASE_SHIFT_H
-#define PHASE_SHIFT_H
+#ifndef TINTL_PHASE_SHIFT_H
+#define TINTL_PHASE_SHIFT_H
 
 /// \file
 /// Functions for construction of interpolation plans using the

@@ -1,5 +1,5 @@
-#ifndef NAIVE_H
-#define NAIVE_H
+#ifndef TINTL_NAIVE_H
+#define TINTL_NAIVE_H
 
 /// \file
 /// Functions for construction of interpolation plans using the naïve
