@@ -9,6 +9,10 @@ FFTW_INCLUDES = @FFTW_INCLUDES@
 FFTW_LDFLAGS= @FFTW_LDFLAGS@
 COMMON_FLAGS = -Wall -pedantic -O3 -fPIC -D_POSIX_C_SOURCE=199309L $(FFTW_INCLUDES) -Iinclude
 
+#Install prefixes
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+
 ifeq ($(HAVE_OPENMP), 1)
 OPENMP_CFLAGS = @OPENMP_CFLAGS@
 COMMON_FLAGS += $(OPENMP_CFLAGS)
@@ -139,8 +143,14 @@ lib/%/plan_cache.o: lib/plan_cache.h
 
 lib/%/timer.o: $(TINTL_INCLUDE)/timer.h
 
+install: lib/libtintl.so
+	install -d @libdir@
+	install -m 755 lib/libtintl.so -t @libdir@
+	install -d @includedir@/tintl
+	install -m 644 $(wildcard include/tintl/*.h) -t @includedir@/tintl
+
 clean:
 	rm -rf lib/st lib/omp
 	rm -f lib/*.o lib/*.so bin/*.o bin/benchmark bin/papi_analysis bin/*.o
 
-.PHONY: default clean
+.PHONY: default clean install
