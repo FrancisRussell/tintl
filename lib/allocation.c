@@ -1,5 +1,5 @@
-#include "allocation.h"
-#include "forward.h"
+#include "tintl/allocation.h"
+#include "tintl/forward.h"
 #include <stdlib.h>
 #include <stdint.h>
 

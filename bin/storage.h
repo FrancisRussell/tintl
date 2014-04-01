@@ -3,7 +3,7 @@
 
 #include <complex.h>
 #include <fftw3.h>
-#include <interpolate.h>
+#include "tintl/interpolate.h"
 
 typedef enum
 {

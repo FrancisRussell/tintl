@@ -1,4 +1,4 @@
-#include "timer.h"
+#include "tintl/timer.h"
 #include <assert.h>
 #include <time.h>
 #include <stdlib.h>

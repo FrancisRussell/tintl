@@ -1,12 +1,12 @@
 #include <thrust/device_vector.h>
 #include <thrust/transform.h>
 #include <thrust/copy.h>
-#include "naive_cuda.h"
-#include "interpolate.h"
-#include "allocation.h"
-#include "timer.h"
+#include "tintl/naive_cuda.h"
+#include "tintl/interpolate.h"
+#include "tintl/allocation.h"
+#include "tintl/timer.h"
 #include "common.h"
-#include "forward.h"
+#include "tintl/forward.h"
 #include "common_cuda.h"
 #include <complex.h>
 #include <cuda_runtime.h>

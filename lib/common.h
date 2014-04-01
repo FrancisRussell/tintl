@@ -3,10 +3,10 @@
 
 #include <complex.h>
 #include <stdint.h>
-#include <forward.h>
-#include <interpolate.h>
+#include "tintl/forward.h"
+#include "tintl/interpolate.h"
 #include <assert.h>
-#include <timer.h>
+#include "tintl/timer.h"
 
 #ifdef __CUDACC__
 #undef __SSE2__

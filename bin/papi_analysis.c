@@ -1,9 +1,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
-#include <naive.h>
-#include <padding_aware.h>
-#include <phase_shift.h>
+#include "tintl/naive.h"
+#include "tintl/padding_aware.h"
+#include "tintl/phase_shift.h"
 #include "storage.h"
 #include "papi_multiplex.h"
 

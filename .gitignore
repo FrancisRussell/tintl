@@ -8,7 +8,7 @@
 /config.log
 /config.status
 /autom4te.cache
-/include/tintl_config.h
+/include/tintl/tintl_config.h
 /Makefile
 /tags
 /doc/html

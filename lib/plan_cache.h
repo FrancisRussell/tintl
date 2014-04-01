@@ -6,7 +6,7 @@
 #endif
 
 #include "common.h"
-#include <interpolate.h>
+#include "tintl/interpolate.h"
 
 struct plan_cache_entry_s;
 

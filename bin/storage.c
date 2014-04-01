@@ -1,6 +1,6 @@
 #include "storage.h"
-#include <allocation.h>
-#include <interpolate.h>
+#include "tintl/allocation.h"
+#include "tintl/interpolate.h"
 #include <complex.h>
 #include <fftw3.h>
 #include <assert.h>

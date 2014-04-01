@@ -2,9 +2,9 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.63])
-AC_INIT([tintl], [0.1], [francis.russell02@imperial.ac.uk])
+AC_INIT([TINTL], [0.1], [francis.russell02@imperial.ac.uk])
 AC_CONFIG_SRCDIR([lib/interpolate.c])
-AC_CONFIG_HEADERS([include/tintl_config.h])
+AC_CONFIG_HEADERS([include/tintl/tintl_config.h])
 
 # Checks for programs.
 AC_PROG_CC

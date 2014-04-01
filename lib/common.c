@@ -3,9 +3,9 @@
 #include <fftw3.h>
 #include <assert.h>
 #include <string.h>
-#include <interpolate.h>
-#include <allocation.h>
-#include <fftw_cycle.h>
+#include "tintl/interpolate.h"
+#include "tintl/allocation.h"
+#include "tintl/fftw_cycle.h"
 
 #ifdef _OPENMP
 #include <omp.h>

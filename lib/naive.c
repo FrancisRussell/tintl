@@ -1,10 +1,10 @@
-#include "interpolate.h"
-#include "naive.h"
-#include "timer.h"
-#include "allocation.h"
+#include "tintl/interpolate.h"
+#include "tintl/naive.h"
+#include "tintl/timer.h"
+#include "tintl/allocation.h"
 #include "common.h"
 #include "fftw_utility.h"
-#include "fftw_cycle.h"
+#include "tintl/fftw_cycle.h"
 #include <complex.h>
 #include <stdint.h>
 #include <fftw3.h>
