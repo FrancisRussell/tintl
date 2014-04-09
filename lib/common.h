@@ -174,6 +174,9 @@ static inline void validate_plan(const interpolate_plan plan)
 
 static inline interpolate_plan cast_to_parent(void *vplan)
 {
+  if (vplan == NULL)
+    return NULL;
+
   interpolate_plan plan = (interpolate_plan) vplan;
   validate_plan(plan);
   return plan;

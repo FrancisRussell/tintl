@@ -3,6 +3,7 @@
 #include "tintl/interpolate.h"
 #include "tintl/padding_aware.h"
 #include "tintl/phase_shift.h"
+#include "tintl/phase_shift_spiral.h"
 #include "tintl/naive.h"
 #include "tintl/naive_cuda.h"
 #include "tintl/padding_aware_cuda.h"
@@ -350,6 +351,7 @@ int main(int argc, char **argv)
       interpolate_plan_3d_naive_interleaved,
       interpolate_plan_3d_padding_aware_interleaved,
       interpolate_plan_3d_phase_shift_interleaved,
+      interpolate_plan_3d_phase_shift_spiral_interleaved,
       interpolate_plan_3d_naive_cuda_interleaved,
       interpolate_plan_3d_padding_aware_cuda_interleaved,
       NULL
@@ -367,6 +369,7 @@ int main(int argc, char **argv)
       interpolate_plan_3d_naive_split,
       interpolate_plan_3d_padding_aware_split,
       interpolate_plan_3d_phase_shift_split,
+      interpolate_plan_3d_phase_shift_spiral_split,
       interpolate_plan_3d_naive_cuda_split,
       interpolate_plan_3d_padding_aware_cuda_split,
       NULL

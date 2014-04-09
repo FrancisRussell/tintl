@@ -1,0 +1,33 @@
+#!/bin/sh
+set -e
+
+: ${1?}
+
+HEADER_PREFIX="opts_TRC_PhaseShift_1"
+SPIRAL_FOLDER="${1}"
+FUNCTION_COUNT=0;
+
+echo '#include "spiral_table.h"'
+
+for HEADER_PATH in $(find ${SPIRAL_FOLDER} -name "${HEADER_PREFIX}_*_*_*.h"); do
+  FUNCTION_COUNT=$(( ${FUNCTION_COUNT} + 1 ))
+  echo "#include \"${HEADER_PATH}\""
+done
+
+echo
+echo "size_t spiral_function_table_size = ${FUNCTION_COUNT};"
+echo
+echo "spiral_function_info_t spiral_function_table[] = {"
+
+for HEADER_PATH in $(find ${SPIRAL_FOLDER} -name "${HEADER_PREFIX}_*_*_*.h"); do
+  HEADER_NAME=$(basename "${HEADER_PATH}")
+  SIZES=$(echo ${HEADER_NAME} | sed -r "s/.*_(.+_.+_.+)\.h/\1/g")
+  FIRST_DIM=$(echo ${HEADER_NAME} | sed -r "s/.*_(.+)_.+_.+\.h/\1/g")
+  echo -n "{ "
+  echo -n ${SIZES} | sed "s/_/, /g"
+  echo -n ", init_run_${FIRST_DIM}, run_${FIRST_DIM} },"
+  echo
+done
+echo "{ .x=-1, .y=-1, .z=-1 } /* Pointless entry to avoid ever creating zero-length array */"
+
+echo "};"

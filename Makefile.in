@@ -32,7 +32,9 @@ LINKER = $(CC)
 
 TINTL_INCLUDE=include/tintl
 LIB_SOURCES = allocation.c common.c interpolate.c naive.c padding_aware.c \
-	      phase_shift.c plan_cache.c timer.c
+	      phase_shift.c plan_cache.c timer.c spiral_table.c \
+	      phase_shift_spiral.c \
+	      $(patsubst lib/%, %, $(wildcard lib/spiral-generated/*.c))
 
 LIB_LDFLAGS_LINKER =
 LIB_LDFLAGS_COMPILER = -fPIC $(OPENMP_CFLAGS) $(FFTW_LDFLAGS)
@@ -88,7 +90,8 @@ bin/papi_analysis: bin/papi_analysis.o bin/papi_multiplex.o bin/storage.o
 
 bin/benchmark.o: $(TINTL_INCLUDE)/timer.h $(TINTL_INCLUDE)/allocation.h $(TINTL_INCLUDE)/interpolate.h \
   $(TINTL_INCLUDE)/phase_shift.h $(TINTL_INCLUDE)/naive.h $(TINTL_INCLUDE)/padding_aware.h \
-  $(TINTL_INCLUDE)/naive_cuda.h $(TINTL_INCLUDE)/padding_aware_cuda.h bin/storage.h
+  $(TINTL_INCLUDE)/naive_cuda.h $(TINTL_INCLUDE)/padding_aware_cuda.h bin/storage.h \
+  $(TINTL_INCLUDE)/phase_shift_spiral.h
 
 bin/papi_analysis.o: $(TINTL_INCLUDE)/naive.h $(TINTL_INCLUDE)/padding_aware.h \
   $(TINTL_INCLUDE)/phase_shift.h bin/storage.h bin/papi_multiplex.h
@@ -101,11 +104,11 @@ bin/%: bin/%.o lib/libtintl.so
 	$(LINKER) $(BIN_LDFLAGS) $^ -o $@ $(BIN_LDLIBS)
 
 lib/st/%.o: lib/%.c
-	mkdir -p lib/st
+	mkdir -p lib/st/spiral-generated
 	$(CC) -c $(CFLAGS) $< -o $@
 
 lib/omp/%.o: lib/%.c
-	mkdir -p lib/omp
+	mkdir -p lib/omp/spiral-generated
 	$(CC) -c $(CFLAGS) $< -o $@
 
 lib/st/%.o: lib/%.cu
@@ -139,6 +142,9 @@ lib/%/padding_aware.o: $(TINTL_INCLUDE)/interpolate.h $(TINTL_INCLUDE)/padding_a
 lib/%/phase_shift.c: $(TINTL_INCLUDE)/interpolate.h $(TINTL_INCLUDE)/phase_shift.h $(TINTL_INCLUDE)/timer.h \
   $(TINTL_INCLUDE)/allocation.h $(TINTL_INCLUDE)/fftw_cycle.h lib/common.h lib/fftw_utility.h
 
+lib/%/phase_shift_spiral.c: $(TINTL_INCLUDE)/interpolate.h $(TINTL_INCLUDE)/phase_shift_spiral.h $(TINTL_INCLUDE)/timer.h \
+  $(TINTL_INCLUDE)/allocation.h lib/common.h
+
 lib/%/plan_cache.o: lib/plan_cache.h
 
 lib/%/timer.o: $(TINTL_INCLUDE)/timer.h
@@ -149,8 +155,14 @@ install: lib/libtintl.so
 	install -d @includedir@/tintl
 	install -m 644 $(wildcard include/tintl/*.h) -t @includedir@/tintl
 
+lib/spiral_table.c: scripts/generate_spiral_function_table $(wildcard lib/spiral-generated/*.h)
+	cd lib &&\
+	../scripts/generate_spiral_function_table spiral-generated > spiral_table.c
+
+lib/spiral_table.o: lib/spiral_table.h lib/spiral-generated/*.c lib/spiral-generated/*.h
+
 clean:
 	rm -rf lib/st lib/omp
-	rm -f lib/*.o lib/*.so bin/*.o bin/benchmark bin/papi_analysis bin/*.o
+	rm -f lib/*.o lib/*.so bin/*.o bin/benchmark bin/papi_analysis bin/*.o lib/spiral_table.c
 
 .PHONY: default clean install
