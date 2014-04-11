@@ -15,6 +15,10 @@ enum
 static void *rs_alloc(size_t size)
 {
   char *const data = malloc(size + sizeof(size_t) + ALIGNMENT - 1);
+
+  if (data == NULL)
+    return NULL;
+
   char *start = data + sizeof(size_t);
   const uintptr_t start_alignment = (uintptr_t) start & (ALIGNMENT - 1);
 
@@ -39,6 +43,9 @@ rs_complex *tintl_alloc_complex(size_t size)
 
 void tintl_free(void *data)
 {
+  if (data == NULL)
+    return;
+
   const size_t offset = ((size_t*) data)[-1];
   free((char*)data - offset);
 }
