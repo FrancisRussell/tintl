@@ -382,10 +382,12 @@ static void plan_common(phase_shift_plan plan, interpolation_t type, int n0, int
   for(int dim = 0; dim < 3; ++dim)
   {
     plan->rotations[dim] = tintl_alloc_complex(plan_input_size(parent, dim));
+    assert(plan->rotations[dim] != NULL);
     build_rotation(plan_input_size(parent, dim), plan->rotations[dim]);
   }
 
   fftw_complex *const scratch = tintl_alloc_complex(max_dimension(plan));
+  assert(scratch != NULL);
 
   // Plan staged transforms
   for(int dim=0; dim < 3; ++dim)
@@ -413,6 +415,8 @@ static void plan_common(phase_shift_plan plan, interpolation_t type, int n0, int
   const size_t block_size = num_elements_block(&coarse_info);
   fftw_complex *const data_in = tintl_alloc_complex(block_size);
   fftw_complex *const data_out = tintl_alloc_complex(block_size);
+  assert(data_in != NULL);
+  assert(data_out != NULL);
 
   memset(data_in, 0, block_size * sizeof(fftw_complex));
   memset(data_out, 0, block_size * sizeof(fftw_complex));
@@ -501,9 +505,11 @@ interpolate_plan interpolate_plan_3d_phase_shift_split(int n0, int n1, int n2, i
   const size_t block_size = num_elements_block(&coarse_info);
 
   double *const real_scratch = tintl_alloc_real(block_size);
+  assert(real_scratch != NULL);
   memset(real_scratch, 0, sizeof(double) * block_size);
 
   fftw_complex *const scratch = tintl_alloc_complex(max_dimension(plan) / 2 + 1);
+  assert(scratch != NULL);
 
   for(int dim=0; dim < 3; ++dim)
   {
@@ -538,6 +544,7 @@ interpolate_plan interpolate_plan_3d_phase_shift_split(int n0, int n1, int n2, i
   }
 
   double *const real_scratch_2 = tintl_alloc_real(block_size);
+  assert(real_scratch_2 != NULL);
   memset(real_scratch_2, 0, sizeof(double) * block_size);
 
   find_best_staging_split(plan, &coarse_info, real_scratch, real_scratch_2, scratch);
@@ -816,6 +823,7 @@ static void phase_shift_interpolate_execute_interleaved_common(const phase_shift
   assert(plan->packing_strategy == PACKED);
   const int max_dim = max_dimension(plan);
   fftw_complex *const scratch = tintl_alloc_complex(max_dim);
+  assert(scratch != NULL);
 
   time_point_save(&plan->before_expand2);
   expand_dim2(plan, blocks[0], blocks[1], scratch);
@@ -838,6 +846,7 @@ static void phase_shift_interpolate_execute_interleaved(interpolate_plan parent,
   const size_t block_size = num_elements(parent);
 
   fftw_complex *const block_data = tintl_alloc_complex(7 * block_size);
+  assert(block_data != NULL);
   fftw_complex *blocks[8];
   blocks[0] = in;
 
@@ -861,6 +870,8 @@ static void interpolate_real_common(const phase_shift_plan plan, double *blocks[
   const size_t max_dim = max_dimension(plan);
   double *const scratch_real = tintl_alloc_real(max_dim);
   fftw_complex *const scratch_complex = tintl_alloc_complex(max_dim / 2 + 1);
+  assert(scratch_real != NULL);
+  assert(scratch_complex != NULL);
 
   time_point_save(&plan->before_expand2);
   expand_dim2_real(plan, &coarse_info, blocks[0], blocks[1], scratch_real, scratch_complex);
@@ -887,6 +898,7 @@ static void phase_shift_interpolate_execute_split(interpolate_plan parent, doubl
   {
     const size_t rounded_block_size = round_align(block_size * sizeof(double)) / sizeof(double);
     double *const block_data = tintl_alloc_real(2 * 7 * rounded_block_size);
+    assert(block_data != NULL);
     double *blocks[2][8];
 
     blocks[0][0] = rin;
@@ -912,6 +924,7 @@ static void phase_shift_interpolate_execute_split(interpolate_plan parent, doubl
   else if (plan->packing_strategy == PACKED)
   {
     fftw_complex *const block_data = tintl_alloc_complex(8 * block_size);
+    assert(block_data != NULL);
     fftw_complex *blocks[8];
 
     for(int block = 0; block < 8; ++block)
@@ -941,6 +954,7 @@ static void phase_shift_interpolate_execute_split_product(interpolate_plan paren
   if (plan->packing_strategy == PACKED)
   {
     fftw_complex *const block_data = tintl_alloc_complex(8 * block_size);
+    assert(block_data != NULL);
     fftw_complex *blocks[8];
 
     for(int block = 0; block < 8; ++block)
@@ -959,6 +973,7 @@ static void phase_shift_interpolate_execute_split_product(interpolate_plan paren
   {
     const size_t rounded_block_size = round_align(block_size * sizeof(double)) / sizeof(double);
     double *const scratch_fine = tintl_alloc_real(8 * rounded_block_size);
+    assert(scratch_fine != NULL);
     phase_shift_interpolate_execute_split(parent, rin, iin, out, scratch_fine);
     pointwise_multiply_real(8 * block_size, out, scratch_fine);
     tintl_free(scratch_fine);

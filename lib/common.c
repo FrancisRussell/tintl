@@ -240,6 +240,8 @@ double time_interpolate_interleaved(interpolate_plan plan)
   const size_t block_size = num_elements(plan);
   fftw_complex *const in = tintl_alloc_complex(block_size);
   fftw_complex *const out = tintl_alloc_complex(8 * block_size);
+  assert(in != NULL);
+  assert(out != NULL);
 
   memset(in, 0, block_size * sizeof(fftw_complex));
   memset(out, 0, 8 * block_size * sizeof(fftw_complex));
@@ -264,6 +266,10 @@ double time_interpolate_split(interpolate_plan plan)
   double *const in2 = tintl_alloc_real(block_size);
   double *const out1 = tintl_alloc_real(8 * block_size);
   double *const out2 = tintl_alloc_real(8 * block_size);
+  assert(in1 != NULL);
+  assert(in2 != NULL);
+  assert(out1 != NULL);
+  assert(out2 != NULL);
 
   memset(in1, 0, block_size * sizeof(double));
   memset(in2, 0, block_size * sizeof(double));
@@ -291,6 +297,9 @@ double time_interpolate_split_product(interpolate_plan plan)
   double *const in1 = tintl_alloc_real(block_size);
   double *const in2 = tintl_alloc_real(block_size);
   double *const out = tintl_alloc_real(8 * block_size);
+  assert(in1 != NULL);
+  assert(in2 != NULL);
+  assert(out != NULL);
 
   memset(in1, 0, block_size * sizeof(double));
   memset(in2, 0, block_size * sizeof(double));

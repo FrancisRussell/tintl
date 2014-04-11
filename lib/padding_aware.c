@@ -109,6 +109,8 @@ static void plan_common(pa_plan plan, interpolation_t type, int n0, int n1, int 
 
   fftw_complex *const scratch_coarse = tintl_alloc_complex(block_size);
   fftw_complex *const scratch_fine = tintl_alloc_complex(8 * block_size);
+  assert(scratch_coarse != NULL);
+  assert(scratch_fine != NULL);
 
   block_info_t fine_info;
   get_block_info_fine(parent, &fine_info);
@@ -192,9 +194,13 @@ interpolate_plan interpolate_plan_3d_padding_aware_split(int n0, int n1, int n2,
 
   double *const scratch_coarse_real = tintl_alloc_real(block_size);
   fftw_complex *const scratch_coarse_complex = tintl_alloc_complex(transformed_size_coarse);
+  assert(scratch_coarse_real != NULL);
+  assert(scratch_coarse_complex != NULL);
 
   fftw_complex *const scratch_fine_complex = tintl_alloc_complex(transformed_size_fine);
   double *const scratch_fine_real = tintl_alloc_real(8 * block_size);
+  assert(scratch_fine_complex != NULL);
+  assert(scratch_fine_real != NULL);
 
   int rev_dims[] = { plan_input_size(parent, 2), plan_input_size(parent, 1), plan_input_size(parent, 0) };
   plan->real_forward = fftw_plan_dft_r2c(3, rev_dims, scratch_coarse_real, scratch_coarse_complex, flags);
@@ -368,6 +374,7 @@ static void pa_interpolate_execute_interleaved(interpolate_plan parent, fftw_com
 
   const size_t block_size = num_elements_block(&coarse_info);
   fftw_complex *const input_copy = tintl_alloc_complex(block_size);
+  assert(input_copy != NULL);
 
   memcpy(input_copy, in, sizeof(fftw_complex) * block_size);
   time_point_save(&plan->before_forward);
@@ -394,6 +401,8 @@ static void pa_interpolate_real(pa_plan plan, double *in, double *out)
 
   fftw_complex *const scratch_coarse = tintl_alloc_complex(transformed_size_coarse);
   fftw_complex *const scratch_fine = tintl_alloc_complex(transformed_size_fine);
+  assert(scratch_coarse != NULL);
+  assert(scratch_fine != NULL);
 
   time_point_save(&plan->before_forward);
   fftw_execute_dft_r2c(plan->real_forward, in, scratch_coarse);
@@ -421,6 +430,8 @@ static void pa_interpolate_execute_split(interpolate_plan parent, double *rin, d
 
     fftw_complex *const scratch_coarse = tintl_alloc_complex(block_size);
     fftw_complex *const scratch_fine = tintl_alloc_complex(8 * block_size);
+    assert(scratch_coarse != NULL);
+    assert(scratch_fine != NULL);
 
     interleave_real(block_size, (double*) scratch_coarse, rin, iin);
     time_point_save(&plan->before_forward);
@@ -456,6 +467,8 @@ static void pa_interpolate_execute_split_product(interpolate_plan parent, double
   {
     fftw_complex *const scratch_coarse = tintl_alloc_complex(block_size);
     fftw_complex *const scratch_fine = tintl_alloc_complex(8 * block_size);
+    assert(scratch_coarse != NULL);
+    assert(scratch_fine != NULL);
 
     interleave_real(block_size, (double*) scratch_coarse, rin, iin);
     pa_interpolate_execute_interleaved(parent, scratch_coarse, scratch_fine);
@@ -467,6 +480,8 @@ static void pa_interpolate_execute_split_product(interpolate_plan parent, double
   else if (plan->strategy == SEPARATE)
   {
     double *const scratch_fine = tintl_alloc_real(8 * block_size);
+    assert(scratch_fine != NULL);
+
     pa_interpolate_execute_split(parent, rin, iin, out, scratch_fine);
     pointwise_multiply_real(8 * block_size, out, scratch_fine);
     tintl_free(scratch_fine);

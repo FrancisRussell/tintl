@@ -29,10 +29,13 @@ void storage_allocate(storage_t *storage, storage_layout_t layout, size_t size)
   {
     case INTERLEAVED:
       storage->interleaved = tintl_alloc_complex(size);
+      assert(storage->interleaved != NULL);
       break;
     case SPLIT:
       storage->split.real = tintl_alloc_real(size);
       storage->split.imag = tintl_alloc_real(size);
+      assert(storage->split.real != NULL);
+      assert(storage->split.imag != NULL);
       break;
     default:
       fprintf(stderr, "Unknown storage type %d\n", layout);

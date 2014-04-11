@@ -444,6 +444,8 @@ static void pa_interpolate_execute_split(interpolate_plan parent, double *rin, d
 
     rs_complex *const scratch_coarse = tintl_alloc_complex(block_size);
     rs_complex *const scratch_fine = tintl_alloc_complex(8 * block_size);
+    assert(scratch_coarse != NULL);
+    assert(scratch_fine != NULL);
 
     interleave_real(block_size, (double*) scratch_coarse, rin, iin);
     pa_interpolate_execute_interleaved(parent, scratch_coarse, scratch_fine);
@@ -491,6 +493,8 @@ static void pa_interpolate_execute_split_product(interpolate_plan parent, double
   {
     rs_complex *const scratch_coarse = tintl_alloc_complex(block_size);
     rs_complex *const scratch_fine = tintl_alloc_complex(8 * block_size);
+    assert(scratch_coarse != NULL);
+    assert(scratch_fine != NULL);
 
     interleave_real(block_size, (double*) scratch_coarse, rin, iin);
     pa_interpolate_execute_interleaved(parent, scratch_coarse, scratch_fine);
