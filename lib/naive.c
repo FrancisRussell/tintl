@@ -84,8 +84,8 @@ static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, i
   interpolate_plan parent = cast_to_parent(plan);
   const size_t block_size = num_elements(parent);
 
-  fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
-  fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
+  fftw_complex *const scratch_coarse = tintl_alloc_complex(block_size);
+  fftw_complex *const scratch_fine = tintl_alloc_complex(8 * block_size);
 
   block_info_t coarse_info, fine_info;
   get_block_info_coarse(parent, &coarse_info);
@@ -103,8 +103,8 @@ static void plan_common(naive_plan plan, interpolation_t type, int n0, int n1, i
   assert(plan->interleaved_forward != NULL);
   assert(plan->interleaved_backward != NULL);
 
-  rs_free(scratch_coarse);
-  rs_free(scratch_fine);
+  tintl_free(scratch_coarse);
+  tintl_free(scratch_fine);
 }
 
 static void naive_set_flags(interpolate_plan parent, const int flags)
@@ -159,11 +159,11 @@ interpolate_plan interpolate_plan_3d_naive_split(int n0, int n1, int n2, int fla
   int rev_dims[] = { coarse_info.dims[2], coarse_info.dims[1], coarse_info.dims[0] };
   int rev_fine_dims[] = { fine_info.dims[2], fine_info.dims[1], fine_info.dims[0] };
 
-  double *const scratch_coarse_real = rs_alloc_real(block_size);
-  fftw_complex *const scratch_coarse_complex = rs_alloc_complex(transformed_size_coarse);
+  double *const scratch_coarse_real = tintl_alloc_real(block_size);
+  fftw_complex *const scratch_coarse_complex = tintl_alloc_complex(transformed_size_coarse);
 
-  double *const scratch_fine_real = rs_alloc_real(8 * block_size);
-  fftw_complex *const scratch_fine_complex = rs_alloc_complex(transformed_size_fine);
+  double *const scratch_fine_real = tintl_alloc_real(8 * block_size);
+  fftw_complex *const scratch_fine_complex = tintl_alloc_complex(transformed_size_fine);
 
   plan->real_forward = fftw_plan_dft_r2c(3, rev_dims, scratch_coarse_real, scratch_coarse_complex, flags);
   plan->real_backward = fftw_plan_dft_c2r(3, rev_fine_dims, scratch_fine_complex, scratch_fine_real, flags);
@@ -171,10 +171,10 @@ interpolate_plan interpolate_plan_3d_naive_split(int n0, int n1, int n2, int fla
   assert(plan->real_forward != NULL);
   assert(plan->real_backward != NULL);
 
-  rs_free(scratch_coarse_real);
-  rs_free(scratch_coarse_complex);
-  rs_free(scratch_fine_real);
-  rs_free(scratch_fine_complex);
+  tintl_free(scratch_coarse_real);
+  tintl_free(scratch_coarse_complex);
+  tintl_free(scratch_fine_real);
+  tintl_free(scratch_fine_complex);
 
   plan->strategy = SEPARATE;
   const double separate_time = time_interpolate_split(parent);
@@ -220,7 +220,7 @@ static void naive_interpolate_execute_interleaved(interpolate_plan parent, fftw_
   get_block_info_fine(parent, &fine_info);
 
   const size_t block_size = num_elements_block(&coarse_info);
-  fftw_complex *const input_copy = rs_alloc_complex(block_size);
+  fftw_complex *const input_copy = tintl_alloc_complex(block_size);
 
   memcpy(input_copy, in, sizeof(fftw_complex) * block_size);
   time_point_save(&plan->before_forward);
@@ -232,7 +232,7 @@ static void naive_interpolate_execute_interleaved(interpolate_plan parent, fftw_
   fftw_execute_dft(plan->interleaved_backward, out, out);
   time_point_save(&plan->after_backward);
 
-  rs_free(input_copy);
+  tintl_free(input_copy);
 }
 
 static void naive_interpolate_real(naive_plan plan, double *in, double *out)
@@ -247,8 +247,8 @@ static void naive_interpolate_real(naive_plan plan, double *in, double *out)
   const size_t transformed_size_coarse = num_elements_block(&transformed_coarse_info);
   const size_t transformed_size_fine = num_elements_block(&transformed_fine_info);
 
-  fftw_complex *const scratch_coarse = rs_alloc_complex(transformed_size_coarse);
-  fftw_complex *const scratch_fine = rs_alloc_complex(transformed_size_fine);
+  fftw_complex *const scratch_coarse = tintl_alloc_complex(transformed_size_coarse);
+  fftw_complex *const scratch_fine = tintl_alloc_complex(transformed_size_fine);
 
   time_point_save(&plan->before_forward);
   fftw_execute_dft_r2c(plan->real_forward, in, scratch_coarse);
@@ -259,8 +259,8 @@ static void naive_interpolate_real(naive_plan plan, double *in, double *out)
   fftw_execute_dft_c2r(plan->real_backward, scratch_fine, out);
   time_point_save(&plan->after_backward);
 
-  rs_free(scratch_coarse);
-  rs_free(scratch_fine);
+  tintl_free(scratch_coarse);
+  tintl_free(scratch_fine);
 }
 
 static void naive_interpolate_execute_split(interpolate_plan parent, double *rin, double *iin, double *rout, double *iout)
@@ -275,8 +275,8 @@ static void naive_interpolate_execute_split(interpolate_plan parent, double *rin
     get_block_info_fine(parent, &fine_info);
     const size_t block_size = num_elements_block(&coarse_info);
 
-    fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
-    fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
+    fftw_complex *const scratch_coarse = tintl_alloc_complex(block_size);
+    fftw_complex *const scratch_fine = tintl_alloc_complex(8 * block_size);
 
     interleave_real(block_size, (double*) scratch_coarse, rin, iin);
     time_point_save(&plan->before_forward);
@@ -289,8 +289,8 @@ static void naive_interpolate_execute_split(interpolate_plan parent, double *rin
     time_point_save(&plan->after_backward);
     deinterleave_real(8 * block_size, (const double*) scratch_fine, rout, iout);
 
-    rs_free(scratch_fine);
-    rs_free(scratch_coarse);
+    tintl_free(scratch_fine);
+    tintl_free(scratch_coarse);
   }
   else if (plan->strategy == SEPARATE)
   {
@@ -312,22 +312,22 @@ static void naive_interpolate_execute_split_product(interpolate_plan parent, dou
 
   if (plan->strategy == PACKED)
   {
-    fftw_complex *const scratch_coarse = rs_alloc_complex(block_size);
-    fftw_complex *const scratch_fine = rs_alloc_complex(8 * block_size);
+    fftw_complex *const scratch_coarse = tintl_alloc_complex(block_size);
+    fftw_complex *const scratch_fine = tintl_alloc_complex(8 * block_size);
 
     interleave_real(block_size, (double*) scratch_coarse, rin, iin);
     naive_interpolate_execute_interleaved(parent, scratch_coarse, scratch_fine);
     complex_to_product(8 * block_size, scratch_fine, out);
 
-    rs_free(scratch_coarse);
-    rs_free(scratch_fine);
+    tintl_free(scratch_coarse);
+    tintl_free(scratch_fine);
   }
   else if (plan->strategy == SEPARATE)
   {
-    double *const scratch_fine = rs_alloc_real(8 * block_size);
+    double *const scratch_fine = tintl_alloc_real(8 * block_size);
     naive_interpolate_execute_split(parent, rin, iin, out, scratch_fine);
     pointwise_multiply_real(8 * block_size, out, scratch_fine);
-    rs_free(scratch_fine);
+    tintl_free(scratch_fine);
   }
   else
   {

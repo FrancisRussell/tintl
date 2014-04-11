@@ -28,11 +28,11 @@ void storage_allocate(storage_t *storage, storage_layout_t layout, size_t size)
   switch(layout)
   {
     case INTERLEAVED:
-      storage->interleaved = rs_alloc_complex(size);
+      storage->interleaved = tintl_alloc_complex(size);
       break;
     case SPLIT:
-      storage->split.real = rs_alloc_real(size);
-      storage->split.imag = rs_alloc_real(size);
+      storage->split.real = tintl_alloc_real(size);
+      storage->split.imag = tintl_alloc_real(size);
       break;
     default:
       fprintf(stderr, "Unknown storage type %d\n", layout);
@@ -47,11 +47,11 @@ void storage_free(storage_t *storage)
   switch(storage->layout)
   {
     case INTERLEAVED:
-      rs_free(storage->interleaved);
+      tintl_free(storage->interleaved);
       break;
     case SPLIT:
-      rs_free(storage->split.real);
-      rs_free(storage->split.imag);
+      tintl_free(storage->split.real);
+      tintl_free(storage->split.imag);
       break;
     default:
       fprintf(stderr, "Unknown storage type %d\n", storage->layout);

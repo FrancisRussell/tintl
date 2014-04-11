@@ -238,8 +238,8 @@ double time_interpolate_interleaved(interpolate_plan plan)
 {
   ticks before, after;
   const size_t block_size = num_elements(plan);
-  fftw_complex *const in = rs_alloc_complex(block_size);
-  fftw_complex *const out = rs_alloc_complex(8 * block_size);
+  fftw_complex *const in = tintl_alloc_complex(block_size);
+  fftw_complex *const out = tintl_alloc_complex(8 * block_size);
 
   memset(in, 0, block_size * sizeof(fftw_complex));
   memset(out, 0, 8 * block_size * sizeof(fftw_complex));
@@ -248,8 +248,8 @@ double time_interpolate_interleaved(interpolate_plan plan)
   interpolate_execute_interleaved(plan, in, out);
   after = getticks();
 
-  rs_free(in);
-  rs_free(out);
+  tintl_free(in);
+  tintl_free(out);
 
   return elapsed(after, before);
 }
@@ -260,10 +260,10 @@ double time_interpolate_split(interpolate_plan plan)
 {
   ticks before, after;
   const size_t block_size = num_elements(plan);
-  double *const in1 = rs_alloc_real(block_size);
-  double *const in2 = rs_alloc_real(block_size);
-  double *const out1 = rs_alloc_real(8 * block_size);
-  double *const out2 = rs_alloc_real(8 * block_size);
+  double *const in1 = tintl_alloc_real(block_size);
+  double *const in2 = tintl_alloc_real(block_size);
+  double *const out1 = tintl_alloc_real(8 * block_size);
+  double *const out2 = tintl_alloc_real(8 * block_size);
 
   memset(in1, 0, block_size * sizeof(double));
   memset(in2, 0, block_size * sizeof(double));
@@ -274,10 +274,10 @@ double time_interpolate_split(interpolate_plan plan)
   interpolate_execute_split(plan, in1, in2, out1, out2);
   after = getticks();
 
-  rs_free(in1);
-  rs_free(in2);
-  rs_free(out1);
-  rs_free(out2);
+  tintl_free(in1);
+  tintl_free(in2);
+  tintl_free(out1);
+  tintl_free(out2);
 
   return elapsed(after, before);
 }
@@ -288,9 +288,9 @@ double time_interpolate_split_product(interpolate_plan plan)
 {
   ticks before, after;
   const size_t block_size = num_elements(plan);
-  double *const in1 = rs_alloc_real(block_size);
-  double *const in2 = rs_alloc_real(block_size);
-  double *const out = rs_alloc_real(8 * block_size);
+  double *const in1 = tintl_alloc_real(block_size);
+  double *const in2 = tintl_alloc_real(block_size);
+  double *const out = tintl_alloc_real(8 * block_size);
 
   memset(in1, 0, block_size * sizeof(double));
   memset(in2, 0, block_size * sizeof(double));
@@ -300,9 +300,9 @@ double time_interpolate_split_product(interpolate_plan plan)
   interpolate_execute_split_product(plan, in1, in2, out);
   after = getticks();
 
-  rs_free(in1);
-  rs_free(in2);
-  rs_free(out);
+  tintl_free(in1);
+  tintl_free(in2);
+  tintl_free(out);
 
   return elapsed(after, before);
 }

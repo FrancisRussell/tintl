@@ -381,11 +381,11 @@ static void plan_common(phase_shift_plan plan, interpolation_t type, int n0, int
 
   for(int dim = 0; dim < 3; ++dim)
   {
-    plan->rotations[dim] = rs_alloc_complex(plan_input_size(parent, dim));
+    plan->rotations[dim] = tintl_alloc_complex(plan_input_size(parent, dim));
     build_rotation(plan_input_size(parent, dim), plan->rotations[dim]);
   }
 
-  fftw_complex *const scratch = rs_alloc_complex(max_dimension(plan));
+  fftw_complex *const scratch = tintl_alloc_complex(max_dimension(plan));
 
   // Plan staged transforms
   for(int dim=0; dim < 3; ++dim)
@@ -411,8 +411,8 @@ static void plan_common(phase_shift_plan plan, interpolation_t type, int n0, int
   block_info_t coarse_info;
   get_block_info_coarse(parent, &coarse_info);
   const size_t block_size = num_elements_block(&coarse_info);
-  fftw_complex *const data_in = rs_alloc_complex(block_size);
-  fftw_complex *const data_out = rs_alloc_complex(block_size);
+  fftw_complex *const data_in = tintl_alloc_complex(block_size);
+  fftw_complex *const data_out = tintl_alloc_complex(block_size);
 
   memset(data_in, 0, block_size * sizeof(fftw_complex));
   memset(data_out, 0, block_size * sizeof(fftw_complex));
@@ -471,9 +471,9 @@ static void plan_common(phase_shift_plan plan, interpolation_t type, int n0, int
   find_best_staging_interleaved(plan, data_in, data_out, scratch);
   find_best_granularity_interleaved(plan, data_in, data_out, scratch);
 
-  rs_free(scratch);
-  rs_free(data_in);
-  rs_free(data_out);
+  tintl_free(scratch);
+  tintl_free(data_in);
+  tintl_free(data_out);
 }
 
 interpolate_plan interpolate_plan_3d_phase_shift_interleaved(int n0, int n1, int n2, int flags)
@@ -500,10 +500,10 @@ interpolate_plan interpolate_plan_3d_phase_shift_split(int n0, int n1, int n2, i
   get_block_info_coarse(parent, &coarse_info);
   const size_t block_size = num_elements_block(&coarse_info);
 
-  double *const real_scratch = rs_alloc_real(block_size);
+  double *const real_scratch = tintl_alloc_real(block_size);
   memset(real_scratch, 0, sizeof(double) * block_size);
 
-  fftw_complex *const scratch = rs_alloc_complex(max_dimension(plan) / 2 + 1);
+  fftw_complex *const scratch = tintl_alloc_complex(max_dimension(plan) / 2 + 1);
 
   for(int dim=0; dim < 3; ++dim)
   {
@@ -537,15 +537,15 @@ interpolate_plan interpolate_plan_3d_phase_shift_split(int n0, int n1, int n2, i
     */
   }
 
-  double *const real_scratch_2 = rs_alloc_real(block_size);
+  double *const real_scratch_2 = tintl_alloc_real(block_size);
   memset(real_scratch_2, 0, sizeof(double) * block_size);
 
   find_best_staging_split(plan, &coarse_info, real_scratch, real_scratch_2, scratch);
   find_best_packing_strategy_split(parent);
 
-  rs_free(scratch);
-  rs_free(real_scratch);
-  rs_free(real_scratch_2);
+  tintl_free(scratch);
+  tintl_free(real_scratch);
+  tintl_free(real_scratch_2);
   return parent;
 }
 
@@ -576,7 +576,7 @@ static void phase_shift_interpolate_destroy_detail(interpolate_plan parent)
     fftw_destroy_plan_maybe_null(plan->idfts_real[dim]);
     fftw_destroy_plan_maybe_null(plan->idfts_real_staged[dim]);
 
-    rs_free(plan->rotations[dim]);
+    tintl_free(plan->rotations[dim]);
   }
 }
 
@@ -815,7 +815,7 @@ static void phase_shift_interpolate_execute_interleaved_common(const phase_shift
 {
   assert(plan->packing_strategy == PACKED);
   const int max_dim = max_dimension(plan);
-  fftw_complex *const scratch = rs_alloc_complex(max_dim);
+  fftw_complex *const scratch = tintl_alloc_complex(max_dim);
 
   time_point_save(&plan->before_expand2);
   expand_dim2(plan, blocks[0], blocks[1], scratch);
@@ -828,7 +828,7 @@ static void phase_shift_interpolate_execute_interleaved_common(const phase_shift
   for(int n = 0; n < 4; ++n)
     expand_dim0(plan, blocks[n], blocks[n + 4], scratch);
 
-  rs_free(scratch);
+  tintl_free(scratch);
 }
 
 static void phase_shift_interpolate_execute_interleaved(interpolate_plan parent, fftw_complex *in, fftw_complex *out)
@@ -837,7 +837,7 @@ static void phase_shift_interpolate_execute_interleaved(interpolate_plan parent,
   assert(plan->packing_strategy == PACKED);
   const size_t block_size = num_elements(parent);
 
-  fftw_complex *const block_data = rs_alloc_complex(7 * block_size);
+  fftw_complex *const block_data = tintl_alloc_complex(7 * block_size);
   fftw_complex *blocks[8];
   blocks[0] = in;
 
@@ -850,7 +850,7 @@ static void phase_shift_interpolate_execute_interleaved(interpolate_plan parent,
   gather_blocks_complex(plan, blocks, out);
   time_point_save(&plan->end);
 
-  rs_free(block_data);
+  tintl_free(block_data);
 }
 
 static void interpolate_real_common(const phase_shift_plan plan, double *blocks[8])
@@ -859,8 +859,8 @@ static void interpolate_real_common(const phase_shift_plan plan, double *blocks[
   interpolate_plan parent = cast_to_parent(plan);
   get_block_info_coarse(parent, &coarse_info);
   const size_t max_dim = max_dimension(plan);
-  double *const scratch_real = rs_alloc_real(max_dim);
-  fftw_complex *const scratch_complex = rs_alloc_complex(max_dim / 2 + 1);
+  double *const scratch_real = tintl_alloc_real(max_dim);
+  fftw_complex *const scratch_complex = tintl_alloc_complex(max_dim / 2 + 1);
 
   time_point_save(&plan->before_expand2);
   expand_dim2_real(plan, &coarse_info, blocks[0], blocks[1], scratch_real, scratch_complex);
@@ -873,8 +873,8 @@ static void interpolate_real_common(const phase_shift_plan plan, double *blocks[
   for(int n = 0; n < 4; ++n)
     expand_dim0_real(plan, &coarse_info, blocks[n], blocks[n + 4], scratch_real, scratch_complex);
 
-  rs_free(scratch_real);
-  rs_free(scratch_complex);
+  tintl_free(scratch_real);
+  tintl_free(scratch_complex);
 }
 
 static void phase_shift_interpolate_execute_split(interpolate_plan parent, double *rin, double *iin, double *rout, double *iout)
@@ -886,7 +886,7 @@ static void phase_shift_interpolate_execute_split(interpolate_plan parent, doubl
   if (plan->packing_strategy == SEPARATE)
   {
     const size_t rounded_block_size = round_align(block_size * sizeof(double)) / sizeof(double);
-    double *const block_data = rs_alloc_real(2 * 7 * rounded_block_size);
+    double *const block_data = tintl_alloc_real(2 * 7 * rounded_block_size);
     double *blocks[2][8];
 
     blocks[0][0] = rin;
@@ -907,11 +907,11 @@ static void phase_shift_interpolate_execute_split(interpolate_plan parent, doubl
     gather_blocks_real(plan, blocks[1], iout);
     time_point_save(&plan->end);
 
-    rs_free(block_data);
+    tintl_free(block_data);
   }
   else if (plan->packing_strategy == PACKED)
   {
-    fftw_complex *const block_data = rs_alloc_complex(8 * block_size);
+    fftw_complex *const block_data = tintl_alloc_complex(8 * block_size);
     fftw_complex *blocks[8];
 
     for(int block = 0; block < 8; ++block)
@@ -924,7 +924,7 @@ static void phase_shift_interpolate_execute_split(interpolate_plan parent, doubl
     gather_blocks_split(plan, blocks, rout, iout);
     time_point_save(&plan->end);
 
-    rs_free(block_data);
+    tintl_free(block_data);
   }
   else
   {
@@ -940,7 +940,7 @@ static void phase_shift_interpolate_execute_split_product(interpolate_plan paren
 
   if (plan->packing_strategy == PACKED)
   {
-    fftw_complex *const block_data = rs_alloc_complex(8 * block_size);
+    fftw_complex *const block_data = tintl_alloc_complex(8 * block_size);
     fftw_complex *blocks[8];
 
     for(int block = 0; block < 8; ++block)
@@ -953,15 +953,15 @@ static void phase_shift_interpolate_execute_split_product(interpolate_plan paren
     gather_blocks_product(plan, blocks, out);
     time_point_save(&plan->end);
 
-    rs_free(block_data);
+    tintl_free(block_data);
   }
   else if (plan->packing_strategy == SEPARATE)
   {
     const size_t rounded_block_size = round_align(block_size * sizeof(double)) / sizeof(double);
-    double *const scratch_fine = rs_alloc_real(8 * rounded_block_size);
+    double *const scratch_fine = tintl_alloc_real(8 * rounded_block_size);
     phase_shift_interpolate_execute_split(parent, rin, iin, out, scratch_fine);
     pointwise_multiply_real(8 * block_size, out, scratch_fine);
-    rs_free(scratch_fine);
+    tintl_free(scratch_fine);
   }
   else
   {

@@ -27,17 +27,17 @@ static void *rs_alloc(size_t size)
   return start;
 }
 
-double *rs_alloc_real(size_t size)
+double *tintl_alloc_real(size_t size)
 {
   return (double*) rs_alloc(size * sizeof(double));
 }
 
-rs_complex *rs_alloc_complex(size_t size)
+rs_complex *tintl_alloc_complex(size_t size)
 {
   return (rs_complex*) rs_alloc(size * sizeof(rs_complex));
 }
 
-void rs_free(void *data)
+void tintl_free(void *data)
 {
   const size_t offset = ((size_t*) data)[-1];
   free((char*)data - offset);
