@@ -4,6 +4,11 @@
 #include "timer.h"
 #include "forward.h"
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 /// \file
 /// Functions for executing interpolation plans.
 
@@ -71,5 +76,9 @@ int interpolate_inc_ref_count(interpolate_plan);
 
 /// Decrement reference count and return count
 int interpolate_dec_ref_count(interpolate_plan);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

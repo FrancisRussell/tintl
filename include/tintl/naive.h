@@ -7,6 +7,11 @@
 
 #include "interpolate.h"
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 /// Construct interleaved interpolation plan.
 interpolate_plan interpolate_plan_3d_naive_interleaved(int n0, int n1, int n2, int flags);
 
@@ -15,5 +20,9 @@ interpolate_plan interpolate_plan_3d_naive_split(int n0, int n1, int n2, int fla
 
 /// Construct split-product interpolation plan.
 interpolate_plan interpolate_plan_3d_naive_product(int n0, int n1, int n2, int flags);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
