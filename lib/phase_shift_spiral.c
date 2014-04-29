@@ -159,15 +159,15 @@ static void phase_shift_interpolate_execute_split(interpolate_plan parent, doubl
   get_block_info_fine(parent, &fine_info);
   const size_t block_size = num_elements_block(&coarse_info);
 
-  fftw_complex *const scratch_coarse = tinl_alloc_complex(block_size);
-  fftw_complex *const scratch_fine = tinl_alloc_complex(8 * block_size);
+  fftw_complex *const scratch_coarse = tintl_alloc_complex(block_size);
+  fftw_complex *const scratch_fine = tintl_alloc_complex(8 * block_size);
 
   interleave_real(block_size, (double*) scratch_coarse, rin, iin);
   plan->packed_interpolate((double*) scratch_fine, (double*) scratch_coarse);
   deinterleave_real(8 * block_size, (const double*) scratch_fine, rout, iout);
 
-  tinl_free(scratch_coarse);
-  tinl_free(scratch_fine);
+  tintl_free(scratch_coarse);
+  tintl_free(scratch_fine);
 }
 
 void phase_shift_interpolate_execute_split_product(interpolate_plan parent, double *rin, double *iin, double *out)
@@ -180,15 +180,15 @@ void phase_shift_interpolate_execute_split_product(interpolate_plan parent, doub
   get_block_info_fine(parent, &fine_info);
   const size_t block_size = num_elements_block(&coarse_info);
 
-  fftw_complex *const scratch_coarse = tinl_alloc_complex(block_size);
-  fftw_complex *const scratch_fine = tinl_alloc_complex(8 * block_size);
+  fftw_complex *const scratch_coarse = tintl_alloc_complex(block_size);
+  fftw_complex *const scratch_fine = tintl_alloc_complex(8 * block_size);
 
   interleave_real(block_size, (double*) scratch_coarse, rin, iin);
   plan->packed_interpolate((double*) scratch_fine, (double*) scratch_coarse);
   complex_to_product(8 * block_size, scratch_fine, out);
 
-  tinl_free(scratch_coarse);
-  tinl_free(scratch_fine);
+  tintl_free(scratch_coarse);
+  tintl_free(scratch_fine);
 }
 
 void phase_shift_interpolate_print_timings(interpolate_plan plan)
