@@ -219,7 +219,10 @@ static void benchmark(FILE *file, storage_layout_t layout, column_info_t *cols)
   stat_type_t stat_type = STATISTIC_UNKNOWN;
   for(int i=0; i < col_count; ++i)
   {
-    interpolate_plan plan = cols[i].constructor(1, 1, 1, 0);
+    // We currently have to construct a plan to get a column name. This is
+    // problematic if we have no idea which sizes the constructor will return
+    // non-NULL plans for.
+    interpolate_plan plan = cols[i].constructor(7, 7, 7, 0);
 
     if (plan != NULL)
     {
