@@ -252,6 +252,7 @@ static void benchmark(FILE *file, storage_layout_t layout, column_info_t *cols)
       if (use_cols[col] == 0)
         continue;
 
+      int missing_measurement = 0;
       double measurement = 0.0;
 
       if (stat_type == STATISTIC_PLANNING)
@@ -259,10 +260,18 @@ static void benchmark(FILE *file, storage_layout_t layout, column_info_t *cols)
         for(int run = 0; run < runs; ++run)
         {
           interpolate_plan plan = cols[col].constructor(x_width, y_width, z_width, 0);
-          double run_measurement;
-          interpolate_get_statistic_float(plan, cols[col].statistic, cols[col].index, &stat_type, &run_measurement);
-          measurement += run_measurement;
-          interpolate_destroy_plan(plan);
+
+          if (plan == NULL)
+          {
+            missing_measurement = 1;
+          }
+          else
+          {
+            double run_measurement;
+            interpolate_get_statistic_float(plan, cols[col].statistic, cols[col].index, &stat_type, &run_measurement);
+            measurement += run_measurement;
+            interpolate_destroy_plan(plan);
+          }
         }
       }
       else
@@ -276,18 +285,26 @@ static void benchmark(FILE *file, storage_layout_t layout, column_info_t *cols)
         generate_test_data(&reference, 2 * z_width, 2 * y_width, 2 * x_width);
 
         interpolate_plan plan = cols[col].constructor(x_width, y_width, z_width, 0);
-        storage_zero(&fine);
 
-        for(int run = 0; run < runs; ++run)
+        if (plan == NULL)
         {
-          execute_interpolate(plan, &coarse, &fine);
-          double run_measurement;
-          interpolate_get_statistic_float(plan, cols[col].statistic, cols[col].index, &stat_type, &run_measurement);
-          measurement += run_measurement;
+          missing_measurement = 1;
         }
+        else
+        {
+          storage_zero(&fine);
 
-        assert(compute_delta_norm(8 * block_size, &fine, &reference) < 1e-5);
-        interpolate_destroy_plan(plan);
+          for(int run = 0; run < runs; ++run)
+          {
+            execute_interpolate(plan, &coarse, &fine);
+            double run_measurement;
+            interpolate_get_statistic_float(plan, cols[col].statistic, cols[col].index, &stat_type, &run_measurement);
+            measurement += run_measurement;
+          }
+
+          assert(compute_delta_norm(8 * block_size, &fine, &reference) < 1e-5);
+          interpolate_destroy_plan(plan);
+        }
 
         storage_free(&coarse);
         storage_free(&fine);
@@ -295,7 +312,11 @@ static void benchmark(FILE *file, storage_layout_t layout, column_info_t *cols)
       }
 
       measurement /= runs;
-      fprintf(file, "%-*.*f", cols[col].field_width, cols[col].field_precision, measurement);
+
+      if (missing_measurement)
+        fprintf(file, "%-*s", cols[col].field_width, "-");
+      else
+        fprintf(file, "%-*.*f", cols[col].field_width, cols[col].field_precision, measurement);
     }
 
     fprintf(file, "\n");
