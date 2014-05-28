@@ -25,7 +25,7 @@ for HEADER_PATH in $(find ${SPIRAL_FOLDER} -name "${HEADER_PREFIX}_*_*_*.h"); do
   FIRST_DIM=$(echo ${HEADER_NAME} | sed -r "s/.*_(.+)_.+_.+\.h/\1/g")
   echo -n "{ "
   echo -n ${SIZES} | sed "s/_/, /g"
-  echo -n ", init_run_${FIRST_DIM}, run_${FIRST_DIM} },"
+  echo -n ", init_run_${SIZES}, run_${SIZES}, del_run_${SIZES} },"
   echo
 done
 echo "{ .x=-1, .y=-1, .z=-1 } /* Pointless entry to avoid ever creating zero-length array */"

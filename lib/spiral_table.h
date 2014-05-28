@@ -12,6 +12,7 @@ typedef struct
   int z;
   void (*initialise)(void);
   spiral_interpolate_function_t interpolate;
+  void (*cleanup)(void);
 } spiral_function_info_t;
 
 extern size_t spiral_function_table_size;
