@@ -12,5 +12,6 @@
 /Makefile
 /tags
 /doc/html
-/lib/spiral_table.c
+/lib/spiral_table_packed.c
+/lib/spiral_table_split.c
 /lib/spiral-generated

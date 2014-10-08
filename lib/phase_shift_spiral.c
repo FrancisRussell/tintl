@@ -5,7 +5,8 @@
 #include "common.h"
 #include "fftw_utility.h"
 #include <tintl/fftw_cycle.h>
-#include "spiral_table.h"
+#include "spiral_table_packed.h"
+#include "spiral_table_split.h"
 #include <complex.h>
 #include <stdint.h>
 #include <fftw3.h>
@@ -14,21 +15,17 @@
 #include <assert.h>
 #include <string.h>
 
-static const int TIMING_ITERATIONS = 50;
-static const double pi = 3.14159265358979323846;
-
-typedef enum
+typedef union
 {
-  PACKED,
-  SEPARATE
-} packing_strategy_t;
+  spiral_interpolate_function_packed_t packed;
+  spiral_interpolate_function_split_t split;
+} spiral_interpolate_function_t;
 
 /// Implementation-specific structure for phase-shift interpolation plans.
 typedef struct
 {
   struct interpolate_plan_s common;
-  packing_strategy_t packing_strategy;
-  spiral_interpolate_function_t packed_interpolate;
+  spiral_interpolate_function_t interpolate;
 } phase_shift_plan_s;
 
 
@@ -84,18 +81,41 @@ static interpolate_plan allocate_plan(void)
 
 static phase_shift_plan plan_common(interpolation_t type, int n0, int n1, int n2, int flags)
 {
-  spiral_interpolate_function_t interpolate_function = 0;
-  for(size_t index = 0; index < spiral_function_table_size; ++index)
+  int function_found = 0;
+  spiral_interpolate_function_t interpolate_function;
+
+  if (type == INTERPOLATE_INTERLEAVED)
   {
-    spiral_function_info_t *const entry = &spiral_function_table[index];
-    if (entry->x == n0 && entry->y == n1 && entry->z == n2)
+    for(size_t index = 0; index < spiral_function_table_packed_size; ++index)
     {
-      entry->initialise();
-      interpolate_function = entry->interpolate;
+      spiral_function_info_packed_t *const entry = &spiral_function_table_packed[index];
+      if (entry->x == n0 && entry->y == n1 && entry->z == n2)
+      {
+        entry->initialise();
+        interpolate_function.packed = entry->interpolate;
+        function_found = 1;
+      }
     }
   }
+  else if (type == INTERPOLATE_SPLIT || type == INTERPOLATE_SPLIT_PRODUCT)
+  {
+    for(size_t index = 0; index < spiral_function_table_split_size; ++index)
+    {
+      spiral_function_info_split_t *const entry = &spiral_function_table_split[index];
+      if (entry->x == n0 && entry->y == n1 && entry->z == n2)
+      {
+        entry->initialise();
+        interpolate_function.split = entry->interpolate;
+        function_found = 1;
+      }
+    }
+  }
+  else
+  {
+    assert(0 && "Unknown interpolation type");
+  }
 
-  if (interpolate_function != NULL)
+  if (function_found)
   {
     interpolate_plan parent = allocate_plan();
     if (parent == NULL)
@@ -103,8 +123,7 @@ static phase_shift_plan plan_common(interpolation_t type, int n0, int n1, int n2
 
     phase_shift_plan plan = (phase_shift_plan) parent;
     populate_properties(parent, type, n0, n1, n2);
-    plan->packed_interpolate = interpolate_function;
-    plan->packing_strategy = PACKED;
+    plan->interpolate = interpolate_function;
     return plan;
   }
   else
@@ -144,9 +163,7 @@ static void phase_shift_interpolate_execute_interleaved(interpolate_plan parent,
   assert(INTERPOLATE_INTERLEAVED == parent->type);
 
   phase_shift_plan plan = (phase_shift_plan) parent;
-  assert(plan->packing_strategy == PACKED);
-
-  plan->packed_interpolate((double*) out, (double*) in);
+  plan->interpolate.packed((double*) out, (double*) in);
 }
 
 static void phase_shift_interpolate_execute_split(interpolate_plan parent, double *rin, double *iin, double *rout, double *iout)
@@ -154,20 +171,7 @@ static void phase_shift_interpolate_execute_split(interpolate_plan parent, doubl
   assert(INTERPOLATE_SPLIT == parent->type);
 
   phase_shift_plan plan = (phase_shift_plan) parent;
-  block_info_t coarse_info, fine_info;
-  get_block_info_coarse(parent, &coarse_info);
-  get_block_info_fine(parent, &fine_info);
-  const size_t block_size = num_elements_block(&coarse_info);
-
-  fftw_complex *const scratch_coarse = tintl_alloc_complex(block_size);
-  fftw_complex *const scratch_fine = tintl_alloc_complex(8 * block_size);
-
-  interleave_real(block_size, (double*) scratch_coarse, rin, iin);
-  plan->packed_interpolate((double*) scratch_fine, (double*) scratch_coarse);
-  deinterleave_real(8 * block_size, (const double*) scratch_fine, rout, iout);
-
-  tintl_free(scratch_coarse);
-  tintl_free(scratch_fine);
+  plan->interpolate.split(rout, iout, rin, iin);
 }
 
 void phase_shift_interpolate_execute_split_product(interpolate_plan parent, double *rin, double *iin, double *out)
@@ -175,19 +179,12 @@ void phase_shift_interpolate_execute_split_product(interpolate_plan parent, doub
   assert(INTERPOLATE_SPLIT_PRODUCT == parent->type);
 
   phase_shift_plan plan = (phase_shift_plan) parent;
-  block_info_t coarse_info, fine_info;
-  get_block_info_coarse(parent, &coarse_info);
+  block_info_t fine_info;
   get_block_info_fine(parent, &fine_info);
-  const size_t block_size = num_elements_block(&coarse_info);
-
-  fftw_complex *const scratch_coarse = tintl_alloc_complex(block_size);
-  fftw_complex *const scratch_fine = tintl_alloc_complex(8 * block_size);
-
-  interleave_real(block_size, (double*) scratch_coarse, rin, iin);
-  plan->packed_interpolate((double*) scratch_fine, (double*) scratch_coarse);
-  complex_to_product(8 * block_size, scratch_fine, out);
-
-  tintl_free(scratch_coarse);
+  const size_t fine_block_size = num_elements_block(&fine_info);
+  double *const scratch_fine = tintl_alloc_real(fine_block_size);
+  plan->interpolate.split(out, scratch_fine, rin, iin);
+  pointwise_multiply_real(fine_block_size, out, scratch_fine);
   tintl_free(scratch_fine);
 }
 
