@@ -204,6 +204,7 @@ static void benchmark(FILE *file, storage_layout_t layout, column_info_t *cols)
 {
   static const char* size_format_string = "%-8s";
   static const char* size_format_int = "%-8d";
+  static const int max_width = 120;
 
   int col_count = 0;
 
@@ -222,7 +223,14 @@ static void benchmark(FILE *file, storage_layout_t layout, column_info_t *cols)
     // We currently have to construct a plan to get a column name. This is
     // problematic if we have no idea which sizes the constructor will return
     // non-NULL plans for.
-    interpolate_plan plan = cols[i].constructor(7, 7, 7, 0);
+    interpolate_plan plan;
+    for(int size = 1; size <= max_width; ++ size)
+    {
+      plan = cols[i].constructor(size, size, size, 0);
+
+      if (plan != NULL)
+        break;
+    }
 
     if (plan != NULL)
     {
@@ -240,7 +248,7 @@ static void benchmark(FILE *file, storage_layout_t layout, column_info_t *cols)
 
   fprintf(file, "\n");
 
-  for(int size = 7; size <= 120; ++size)
+  for(int size = 7; size <= max_width; ++size)
   {
     const int runs = 10;
 
