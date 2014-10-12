@@ -8,10 +8,9 @@ FFTW_LDLIBS = @FFTW_LDLIBS@
 FFTW_INCLUDES = @FFTW_INCLUDES@
 FFTW_LDFLAGS= @FFTW_LDFLAGS@
 
-SPIRAL_ARCH=SSE
-SPIRAL_VARIANT=CPLX
+SPIRAL_ARCH=AVX
 SPIRAL_COMMON_FOLDER=lib/spiral-generated/common
-SPIRAL_FOLDER_RELATIVE=spiral-generated/$(SPIRAL_ARCH)/$(SPIRAL_VARIANT)
+SPIRAL_FOLDER_RELATIVE=spiral-generated/$(SPIRAL_ARCH)
 SPIRAL_FOLDER=lib/$(SPIRAL_FOLDER_RELATIVE)
 
 COMMON_FLAGS = -Wall -pedantic -O3 -mavx -fPIC -D_POSIX_C_SOURCE=199309L $(FFTW_INCLUDES) -Iinclude \
@@ -42,7 +41,7 @@ TINTL_INCLUDE=include/tintl
 LIB_SOURCES = allocation.c common.c interpolate.c naive.c padding_aware.c \
 	      phase_shift.c plan_cache.c timer.c spiral_table_packed.c \
 	      spiral_table_split.c phase_shift_spiral.c \
-	      $(patsubst lib/%, %, $(wildcard ${SPIRAL_FOLDER}/*.c))
+	      $(patsubst lib/%, %, $(wildcard ${SPIRAL_FOLDER}/*/*.c))
 
 LIB_LDFLAGS_LINKER =
 LIB_LDFLAGS_COMPILER = -fPIC $(OPENMP_CFLAGS) $(FFTW_LDFLAGS)
@@ -112,11 +111,11 @@ bin/%: bin/%.o lib/libtintl.so
 	$(LINKER) $(BIN_LDFLAGS) $^ -o $@ $(BIN_LDLIBS)
 
 lib/st/%.o: lib/%.c
-	mkdir -p lib/st/$(SPIRAL_FOLDER_RELATIVE)
+	mkdir -p $(patsubst lib/%, lib/st/%, $(wildcard ${SPIRAL_FOLDER}/*))
 	$(CC) -c $(CFLAGS) $< -o $@
 
 lib/omp/%.o: lib/%.c
-	mkdir -p lib/omp/$(SPIRAL_FOLDER_RELATIVE)
+	mkdir -p $(patsubst lib/%, lib/omp/%, $(wildcard ${SPIRAL_FOLDER}/*))
 	$(CC) -c $(CFLAGS) $< -o $@
 
 lib/st/%.o: lib/%.cu
@@ -163,15 +162,19 @@ install: lib/libtintl.so
 	install -d @includedir@/tintl
 	install -m 644 $(wildcard include/tintl/*.h) -t @includedir@/tintl
 
-lib/spiral_table_packed.c: scripts/generate_spiral_function_table $(wildcard $(SPIRAL_FOLDER)/*.h)
-	./scripts/generate_spiral_function_table $(SPIRAL_FOLDER) packed > $@
+lib/spiral_table_packed.c: scripts/generate_spiral_function_table $(wildcard $(SPIRAL_FOLDER)/*/*.h)
+	TINTL_ROOT=$$(pwd) &&\
+	cd $(SPIRAL_FOLDER) &&\
+	$${TINTL_ROOT}/scripts/generate_spiral_function_table . packed > $${TINTL_ROOT}/$@
 
-lib/spiral_table_split.c: scripts/generate_spiral_function_table $(wildcard $(SPIRAL_FOLDER)/*.h)
-	./scripts/generate_spiral_function_table $(SPIRAL_FOLDER) split > $@
+lib/spiral_table_split.c: scripts/generate_spiral_function_table $(wildcard $(SPIRAL_FOLDER)/*/*.h)
+	TINTL_ROOT=$$(pwd) &&\
+	cd $(SPIRAL_FOLDER) &&\
+	$${TINTL_ROOT}/scripts/generate_spiral_function_table . split > $${TINTL_ROOT}/$@
 
-lib/spiral_table_packed.o: lib/spiral_table_packed.h $(SPIRAL_FOLDER)/*.c $(SPIRAL_FOLDER)/*.h
+lib/spiral_table_packed.o: lib/spiral_table_packed.h $(SPIRAL_FOLDER)/*/*.c $(SPIRAL_FOLDER)/*/*.h
 
-lib/spiral_table_split.o: lib/spiral_table_split.h $(SPIRAL_FOLDER)/*.c $(SPIRAL_FOLDER)/*.h
+lib/spiral_table_split.o: lib/spiral_table_split.h $(SPIRAL_FOLDER)/*/*.c $(SPIRAL_FOLDER)/*/*.h
 
 clean:
 	rm -rf lib/st lib/omp

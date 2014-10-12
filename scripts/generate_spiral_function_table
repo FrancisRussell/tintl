@@ -11,9 +11,9 @@ FUNCTION_COUNT=0;
 
 echo "#include \"spiral_table_${VARIANT}.h\""
 
-for HEADER_PATH in $(find ${SPIRAL_FOLDER} -name "${HEADER_PREFIX}_*_*_*.h"); do
+for HEADER_PATH in $(find * -name "${HEADER_PREFIX}_*_*_*.h"); do
   FUNCTION_COUNT=$(( ${FUNCTION_COUNT} + 1 ))
-  echo "#include \"$(basename ${HEADER_PATH})\""
+  echo "#include \"${HEADER_PATH}\""
 done
 
 echo
@@ -21,15 +21,19 @@ echo "const size_t spiral_function_table_${VARIANT}_size = ${FUNCTION_COUNT};"
 echo
 echo "spiral_function_info_${VARIANT}_t spiral_function_table_${VARIANT}[] = {"
 
-for HEADER_PATH in $(find ${SPIRAL_FOLDER} -name "${HEADER_PREFIX}_*_*_*.h"); do
-  HEADER_NAME=$(basename "${HEADER_PATH}")
-  SIZES=$(echo ${HEADER_NAME} | sed -r "s/.*_(.+_.+_.+)\.h/\1/g")
-  FIRST_DIM=$(echo ${HEADER_NAME} | sed -r "s/.*_(.+)_.+_.+\.h/\1/g")
-  echo -n "{ "
-  echo -n ${SIZES} | sed "s/_/, /g"
-  echo -n ", spiral_interpolate_${VARIANT}_init_run_${SIZES}, spiral_interpolate_${VARIANT}_run_${SIZES}, spiral_interpolate_${VARIANT}_del_run_${SIZES} },"
-  echo
+for IMPLEMENTATION in *; do
+  for HEADER_PATH in $(find ${IMPLEMENTATION} -name "${HEADER_PREFIX}_*_*_*.h"); do
+    HEADER_NAME=$(basename "${HEADER_PATH}")
+    SIZES=$(echo ${HEADER_NAME} | sed -r "s/.*_(.+_.+_.+)\.h/\1/g")
+    echo -n "{ "
+    echo -n ${SIZES} | sed "s/_/, /g"
+    echo -n ", spiral_interpolate_${VARIANT}_${IMPLEMENTATION}_init_run_${SIZES}, \
+spiral_interpolate_${VARIANT}_${IMPLEMENTATION}_run_${SIZES}, \
+spiral_interpolate_${VARIANT}_${IMPLEMENTATION}_del_run_${SIZES} },"
+    echo
+  done
 done
+
 echo "{ .x=-1, .y=-1, .z=-1 } /* Pointless entry to avoid ever creating zero-length array */"
 
 echo "};"
