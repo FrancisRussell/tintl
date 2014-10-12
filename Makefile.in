@@ -13,7 +13,7 @@ SPIRAL_COMMON_FOLDER=lib/spiral-generated/common
 SPIRAL_FOLDER_RELATIVE=spiral-generated/$(SPIRAL_ARCH)
 SPIRAL_FOLDER=lib/$(SPIRAL_FOLDER_RELATIVE)
 
-COMMON_FLAGS = -Wall -pedantic -O3 -mavx -fPIC -D_POSIX_C_SOURCE=199309L $(FFTW_INCLUDES) -Iinclude \
+COMMON_FLAGS = -Wall -pedantic -O2 -mavx -fPIC -D_POSIX_C_SOURCE=199309L $(FFTW_INCLUDES) -Iinclude \
 	       -I$(SPIRAL_COMMON_FOLDER) -I$(SPIRAL_FOLDER)
 
 #Install prefixes
