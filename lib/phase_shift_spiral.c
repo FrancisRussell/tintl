@@ -14,6 +14,7 @@
 #include <math.h>
 #include <assert.h>
 #include <string.h>
+#include <float.h>
 
 typedef union
 {
@@ -81,8 +82,15 @@ static interpolate_plan allocate_plan(void)
 
 static phase_shift_plan plan_common(interpolation_t type, int n0, int n1, int n2, int flags)
 {
+  interpolate_plan parent = allocate_plan();
+  if (parent == NULL)
+    return NULL;
+
+  phase_shift_plan plan = (phase_shift_plan) parent;
+  populate_properties(parent, type, n0, n1, n2);
+
   int function_found = 0;
-  spiral_interpolate_function_t interpolate_function;
+  double best_time = DBL_MAX;
 
   if (type == INTERPOLATE_INTERLEAVED)
   {
@@ -92,7 +100,15 @@ static phase_shift_plan plan_common(interpolation_t type, int n0, int n1, int n2
       if (entry->x == n0 && entry->y == n1 && entry->z == n2)
       {
         entry->initialise();
-        interpolate_function.packed = entry->interpolate;
+        const spiral_interpolate_function_t prev_function = plan->interpolate;
+        plan->interpolate.packed = entry->interpolate;
+        const double time = time_interpolate_interleaved(parent);
+
+        if (time < best_time)
+          best_time = time;
+        else
+          plan->interpolate = prev_function;
+
         function_found = 1;
       }
     }
@@ -105,7 +121,15 @@ static phase_shift_plan plan_common(interpolation_t type, int n0, int n1, int n2
       if (entry->x == n0 && entry->y == n1 && entry->z == n2)
       {
         entry->initialise();
-        interpolate_function.split = entry->interpolate;
+        const spiral_interpolate_function_t prev_function = plan->interpolate;
+        plan->interpolate.split = entry->interpolate;
+        const double time = time_interpolate_split(parent);
+
+        if (time < best_time)
+          best_time = time;
+        else
+          plan->interpolate = prev_function;
+
         function_found = 1;
       }
     }
@@ -117,17 +141,11 @@ static phase_shift_plan plan_common(interpolation_t type, int n0, int n1, int n2
 
   if (function_found)
   {
-    interpolate_plan parent = allocate_plan();
-    if (parent == NULL)
-      return NULL;
-
-    phase_shift_plan plan = (phase_shift_plan) parent;
-    populate_properties(parent, type, n0, n1, n2);
-    plan->interpolate = interpolate_function;
     return plan;
   }
   else
   {
+    interpolate_destroy_plan(parent);
     return NULL;
   }
 }
