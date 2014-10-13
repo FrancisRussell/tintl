@@ -3,6 +3,7 @@
 #include <fftw3.h>
 #include <assert.h>
 #include <string.h>
+#include <math.h>
 #include "tintl/interpolate.h"
 #include "tintl/allocation.h"
 #include "tintl/fftw_cycle.h"
@@ -233,6 +234,17 @@ void complex_to_product(const size_t size, const fftw_complex *in, double *out)
     out[i] = in_e[2 * i] * in_e[2 * i + 1];
 }
 
+static size_t num_timing_iterations(interpolate_plan plan)
+{
+  const size_t elements = num_elements(plan);
+  const double work = elements * log((double) elements);
+  const double scaling_factor = 1e7;
+
+  size_t iterations = (size_t) scaling_factor / work;
+  iterations = (iterations <= 0 ? 1 : iterations);
+  return iterations;
+}
+
 /// Time an interpolation plan for complex input data.
 double time_interpolate_interleaved(interpolate_plan plan)
 {
@@ -246,14 +258,16 @@ double time_interpolate_interleaved(interpolate_plan plan)
   memset(in, 0, block_size * sizeof(fftw_complex));
   memset(out, 0, 8 * block_size * sizeof(fftw_complex));
 
+  const size_t iterations = num_timing_iterations(plan);
   before = getticks();
-  interpolate_execute_interleaved(plan, in, out);
+  for(size_t iteration = 0; iteration < iterations; ++iteration)
+    interpolate_execute_interleaved(plan, in, out);
   after = getticks();
 
   tintl_free(in);
   tintl_free(out);
 
-  return elapsed(after, before);
+  return elapsed(after, before) / iterations;
 }
 
 
@@ -276,8 +290,10 @@ double time_interpolate_split(interpolate_plan plan)
   memset(out1, 0, 8 * block_size * sizeof(double));
   memset(out2, 0, 8 * block_size * sizeof(double));
 
+  const size_t iterations = num_timing_iterations(plan);
   before = getticks();
-  interpolate_execute_split(plan, in1, in2, out1, out2);
+  for(size_t iteration = 0; iteration < iterations; ++iteration)
+    interpolate_execute_split(plan, in1, in2, out1, out2);
   after = getticks();
 
   tintl_free(in1);
@@ -285,7 +301,7 @@ double time_interpolate_split(interpolate_plan plan)
   tintl_free(out1);
   tintl_free(out2);
 
-  return elapsed(after, before);
+  return elapsed(after, before) / iterations;
 }
 
 /// Time an interpolation for split-format data where the results are
@@ -305,15 +321,17 @@ double time_interpolate_split_product(interpolate_plan plan)
   memset(in2, 0, block_size * sizeof(double));
   memset(out, 0, 8 * block_size * sizeof(double));
 
+  const size_t iterations = num_timing_iterations(plan);
   before = getticks();
-  interpolate_execute_split_product(plan, in1, in2, out);
+  for(size_t iteration = 0; iteration < iterations; ++iteration)
+    interpolate_execute_split_product(plan, in1, in2, out);
   after = getticks();
 
   tintl_free(in1);
   tintl_free(in2);
   tintl_free(out);
 
-  return elapsed(after, before);
+  return elapsed(after, before) / iterations;
 }
 
 /// Copy doubles from a smaller to larger region.
