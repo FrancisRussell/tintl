@@ -4,6 +4,7 @@
 #include "tintl/naive.h"
 #include "tintl/padding_aware.h"
 #include "tintl/phase_shift.h"
+#include "tintl/phase_shift_spiral.h"
 #include "storage.h"
 #include "papi_multiplex.h"
 
@@ -17,14 +18,17 @@ void do_profiling(const int *sizes, const size_t count)
 
   const plan_constructor_t plan_constructors[] =
   {
-    interpolate_plan_3d_naive_interleaved,
-    interpolate_plan_3d_padding_aware_interleaved,
-    interpolate_plan_3d_phase_shift_interleaved,
+    interpolate_plan_3d_phase_shift_split,
+    interpolate_plan_3d_phase_shift_spiral_split,
   };
 
   const papi_event_t counters[] =
   {
     PAPI_TOT_CYC,
+    PAPI_REF_CYC,
+    PAPI_TOT_INS,
+    PAPI_STL_ICY,
+    PAPI_L2_TCM,
     PAPI_L3_TCM,
     PAPI_DP_OPS
   };
@@ -35,7 +39,7 @@ void do_profiling(const int *sizes, const size_t count)
   printf("%*s", size_field_width, "");
   for(size_t constructor_index = 0; constructor_index < num_plan_constructors; ++constructor_index)
   {
-    interpolate_plan plan = plan_constructors[constructor_index](1, 1, 1, 0);
+    interpolate_plan plan = plan_constructors[constructor_index](75, 75, 75, 0);
     assert(plan != NULL);
     printf("%*s", (int) (result_field_width * num_counters), interpolate_get_name(plan));
     interpolate_destroy_plan(plan);
@@ -54,10 +58,9 @@ void do_profiling(const int *sizes, const size_t count)
   }
   printf("\n");
 
-  for(size_t size_index = 0; size_index < count; ++size_index)
+  for(size_t size = 7; size <= 119; size += 2)
   {
-    const int layout = INTERLEAVED;
-    const size_t size = sizes[size_index];
+    const int layout = SPLIT;
     const size_t block_size = size * size * size;
     storage_t coarse, fine;
 
